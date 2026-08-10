@@ -1,11 +1,5 @@
 # exp2_order.py
-"""Experiment 2: order d+1 from an initial point already inside the ball.
-
-Panel (a): log10 e_{k+1} against log10 e_k; the dotted lines have slope d+1 and
-intercept log10|psi_d(1)|, both taken from theory rather than fitted.
-Panel (b): log10 e_k against k, one curve per d; the flooring at l_floor is a
-display clamp only, the underlying track is exact well past double underflow.
-"""
+"""Experiment 2: order d+1 from an initial point already inside the ball."""
 
 import numpy as np
 import matplotlib.pyplot as plt

@@ -1,15 +1,5 @@
 # exp8_clip_spectrum.py
-"""Experiment 8: spectral clipping through Sgn alone (Thm. clip).
-
-The argument may be rank deficient, so Prop. clip-well-posed leaves only the
-readings that hold on all of R^{m x n}: alpha <= 0 <= beta, which is what is
-configured. Singular values being nonnegative, the lower branch is then inert on
-the spectrum and the operator caps at beta; the alpha branch lives on the odd
-extension, i.e. on negative diagonal entries of a signed SVD.
-
-Left panel:  sigma_i(M) dotted, clip_odd(sigma_i) dashed, NS values at a few k.
-Right panel: distance of the NS expression to the exact operator, against k.
-"""
+"""Experiment 8: spectral clipping through Sgn alone (Thm. clip)."""
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,16 +10,17 @@ CFG = {
     "m": 64,
     "n": 48,
     "seed": 0,
-    "gen": "gauss",
-    "n_zero": 8,
-    "s_min": 1e-2,
-    "s_max": 1.0,
+    "gen": "edit",          # 'gauss', or 'edit' to overwrite the spectral tail
+    "n_zero": 0,
+    "n_small": 0,
+    "s_small": 1e-6,
     "normalize": True,       # ||M||_2 = 1, so alpha and beta scale with sigma
-    "alpha": 0.30,          # require alpha <= 0 <= beta
+    "alpha": -0.30,
     "beta": 0.60,
     "d": 3,
     "k_show": (1, 2, 3, 5),
     "k_err": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+    "xaxis": "sigma",        # 'index' or 'sigma'
     "norm_method": "svd",
     "norm_power_iters": 300,
     "norm_tol": 1e-12,
@@ -44,10 +35,12 @@ CFG = {
 
 
 def run(cfg=CFG):
-    # if not cfg["alpha"] <= 0.0 <= cfg["beta"]:
-    #     raise ValueError("choose alpha <= 0 <= beta: the argument may be rank deficient")
     M = nu.make_M(cfg)
     U, sig, V = nu.calc_svd(M)
+    pos = sig[sig > nu.rank_tol(M, sig)]
+    if pos.size < sig.size and not cfg["alpha"] <= 0.0 <= cfg["beta"]:
+        raise ValueError("rank-deficient argument: choose alpha <= 0 <= beta")
+
     f = nu.odd_ext(lambda t: nu.clip_ab(t, cfg["alpha"], cfg["beta"]))
     Y_ex = nu.op_svd(M, f)          # reference, read off the SVD
     coords_ex = np.asarray(f(sig))
@@ -57,11 +50,10 @@ def run(cfg=CFG):
         lambda k: nu.clip_map(M, cfg["alpha"], cfg["beta"], nu.sgn_cfg(cfg, k)),
         k_all, Y_ex, U, V)
 
-    pos = sig[sig > nu.rank_tol(M, sig)]
-    print("gen=%s, clip [%.2f,%.2f], d=%d, rank %d of %d, gap to beta %.3e"
-          % (cfg["gen"], cfg["alpha"], cfg["beta"], cfg["d"], pos.size, sig.size,
-             float(np.min(np.abs(pos - cfg["beta"])))))
-    print("%-4s %-13s %-13s %-13s" % ("k", "errF", "err2", "frame resid"))
+    print("gen=%s, d=%d, rank %d of %d, sigma_min=%.6f, alpha=%.2f, beta=%.2f"
+          % (cfg["gen"], cfg["d"], pos.size, sig.size, float(np.min(pos)),
+             cfg["alpha"], cfg["beta"]))
+    print("%-4s %-13s %-13s %-13s" % ("k", "errF", "err2", "resid"))
     for k in cfg["k_err"]:
         r = res[int(k)]
         print("%-4d %-13.3e %-13.3e %-13.3e" % (int(k), r["errF"], r["err2"], r["resid"]))
@@ -70,7 +62,7 @@ def run(cfg=CFG):
     nu.plot_spectrum(axes[0], sig, coords_ex,
                      [res[int(k)]["coords"] for k in cfg["k_show"]], cfg["k_show"],
                      r"clipping, $[\alpha,\beta]=[%.2f,%.2f]$, d=%d"
-                     % (cfg["alpha"], cfg["beta"], cfg["d"]))
+                     % (cfg["alpha"], cfg["beta"], cfg["d"]), xaxis=cfg["xaxis"])
     axes[0].axhline(cfg["beta"], color="0.7", lw=0.6)
     ks = [int(k) for k in k_all]
     nu.plot_decay(axes[1], ks,

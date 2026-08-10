@@ -1,10 +1,5 @@
 # exp6_sign_error.py
-"""Experiment 6: convergence of the matrix orbit to Sgn(M), d = 1..6.
-
-Left panel:  ||X_k - Sgn(M)||_F against k, one curve per degree.
-Right panel: ||E_{k+1}||_2 against ||E_k||_2, with the predicted asymptote
-             e -> |psi_d(1)| e^(d+1) of Thm. matrix-order.
-"""
+"""Experiment 6: convergence of the matrix orbit to Sgn(M), d = 1..6."""
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,10 +10,10 @@ CFG = {
     "m": 64,
     "n": 48,
     "seed": 0,
-    "gen": "gauss",          # 'spec' prescribes the spectrum, 'gauss' samples entries
-    "n_zero": 8,            # exact zeros, so the argument is truly rank deficient
-    "s_min": 1e-2,          # smallest nonzero singular value; sets the burn-in
-    "s_max": 1.0,
+    "gen": "gauss",         # 'gauss', or 'edit' to overwrite the spectral tail
+    "n_zero": 0,            # 'edit' only: smallest singular values sent to 0
+    "n_small": 0,           # 'edit' only: next smallest sent to s_small
+    "s_small": 1e-6,
     "normalize": True,
     "d_list": (1, 2, 3, 4, 5, 6),
     "n_iters": 18,
@@ -58,16 +53,12 @@ def run(cfg=CFG):
         err2[d] = np.array([float(np.linalg.norm(X - N, 2)) for X in Xs])
 
     pos = sig[sig > nu.rank_tol(M, sig)]
-    print("gen=%s, %dx%d, rank %d, ||M||_2=%.6f, sigma_min+=%.3e"
-          % (cfg["gen"], cfg["m"], cfg["n"], pos.size, nu.spec_norm_svd(M),
-             float(np.min(pos))))
-    print("%-3s %-13s %-13s %-13s %-13s" % ("d", "errF final", "err2 final",
-                                            "ratio meas", "|psi_d(1)|"))
+    print("gen=%s, %dx%d, rank %d of %d, ||M||_2=%.6f, sigma_min+=%.3e"
+          % (cfg["gen"], cfg["m"], cfg["n"], pos.size, sig.size,
+             nu.spec_norm_svd(M), float(np.min(pos))))
+    print("%-3s %-13s %-13s" % ("d", "errF final", "err2 final"))
     for d in cfg["d_list"]:
-        x, y = order_pairs(cfg, err2[d])
-        ratio = float(y[-1] / x[-1] ** (d + 1)) if x.size else float("nan")
-        print("%-3d %-13.3e %-13.3e %-13.4f %-13.4f"
-              % (d, errF[d][-1], err2[d][-1], ratio, nu.psi_at_one(d)))
+        print("%-3d %-13.3e %-13.3e" % (d, errF[d][-1], err2[d][-1]))
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     fig, axes = plt.subplots(1, 2, figsize=cfg["figsize"])

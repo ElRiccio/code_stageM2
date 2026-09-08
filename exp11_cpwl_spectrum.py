@@ -10,16 +10,16 @@ CFG = {
     "m": 64,
     "n": 48,
     "seed": 0,
-    "gen": "gauss",          # 'gauss', or 'edit' to overwrite the spectral tail
+    "gen": "edit",          # 'gauss', or 'edit' to overwrite the spectral tail
     "n_zero": 0,
-    "n_small": 0,
+    "n_small": 1,
     "s_small": 1e-6,
     "normalize": True,       # ||M||_2 = 1, so the knots scale with sigma
     "knots": (0.0, 0.20, 0.45, 0.70, 1.00),   # 5 knots, hence 3 breakpoints
     "vals": (0.0, 0.10, 0.50, 0.40, 0.90),    # first value 0, so eta = 0
     "d": 1,
     "k_show": (1, 2, 3, 4, 5),
-    "k_err": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+    "k_err": (1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50),
     "xaxis": "sigma",        # 'index' or 'sigma'
     "norm_method": "svd",
     "norm_power_iters": 300,

@@ -11,14 +11,14 @@ CFG = {
     "n": 48,
     "seed": 0,
     "gen": "edit",          # 'gauss', or 'edit' to overwrite the spectral tail
-    "n_zero": 0,
+    "n_zero": 1,
     "n_small": 0,
     "s_small": 1e-6,
     "normalize": True,       # ||M||_2 = 1, so alpha and beta scale with sigma
-    "alpha": -0.30,
+    "alpha": 0.30,
     "beta": 0.60,
-    "d": 3,
-    "k_show": (1, 2, 3, 5),
+    "d": 1,
+    "k_show": (1, 2, 3, 5, 12),
     "k_err": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
     "xaxis": "sigma",        # 'index' or 'sigma'
     "norm_method": "svd",
@@ -31,6 +31,7 @@ CFG = {
     "fname": "exp8_clip_spectrum.png",
     "dpi": 150,
     "show": True,
+    "tol": 1e-12
 }
 
 
@@ -38,8 +39,8 @@ def run(cfg=CFG):
     M = nu.make_M(cfg)
     U, sig, V = nu.calc_svd(M)
     pos = sig[sig > nu.rank_tol(M, sig)]
-    if pos.size < sig.size and not cfg["alpha"] <= 0.0 <= cfg["beta"]:
-        raise ValueError("rank-deficient argument: choose alpha <= 0 <= beta")
+    # if pos.size < sig.size and not cfg["alpha"] <= 0.0 <= cfg["beta"]:
+    #     raise ValueError("rank-deficient argument: choose alpha <= 0 <= beta")
 
     f = nu.odd_ext(lambda t: nu.clip_ab(t, cfg["alpha"], cfg["beta"]))
     Y_ex = nu.op_svd(M, f)          # reference, read off the SVD

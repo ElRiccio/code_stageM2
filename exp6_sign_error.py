@@ -10,8 +10,8 @@ CFG = {
     "m": 64,
     "n": 48,
     "seed": 0,
-    "gen": "gauss",         # 'gauss', or 'edit' to overwrite the spectral tail
-    "n_zero": 0,            # 'edit' only: smallest singular values sent to 0
+    "gen": "edit",         # 'gauss', or 'edit' to overwrite the spectral tail
+    "n_zero": 1,            # 'edit' only: smallest singular values sent to 0
     "n_small": 0,           # 'edit' only: next smallest sent to s_small
     "s_small": 1e-6,
     "normalize": True,
@@ -29,6 +29,7 @@ CFG = {
     "fname": "exp6_sign_error.png",
     "dpi": 150,
     "show": True,
+    "tol": 1e-12
 }
 
 
@@ -48,7 +49,8 @@ def run(cfg=CFG):
     errF, err2 = {}, {}
     for d in cfg["d_list"]:
         Xs = nu.orbit_matrix(M, nu.coeffs_a(d), cfg["n_iters"],
-                             norm_method=cfg["norm_method"], norm_kw=nu.norm_kwargs(cfg))
+                             norm_method=cfg["norm_method"], norm_kw=nu.norm_kwargs(cfg),
+                             tol=cfg.get("tol"))
         errF[d] = np.array([float(np.linalg.norm(X - N)) for X in Xs])
         err2[d] = np.array([float(np.linalg.norm(X - N, 2)) for X in Xs])
 

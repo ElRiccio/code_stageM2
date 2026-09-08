@@ -11,9 +11,9 @@ CFG = {
     "n": 48,
     "seed": 0,
     "gen": "edit",           # 'gauss', or 'edit' to overwrite the spectral tail
-    "n_zero": 0,
+    "n_zero": 1,
     "n_small": 0,
-    "s_small": 1e-6,
+    "s_small": 1e-10,
     "normalize": True,
     "d": 3,
     "k_show": (1, 2, 3, 5),   # iterates drawn in the spectrum panel
@@ -29,19 +29,24 @@ CFG = {
     "fname": "exp7_sign_spectrum.png",
     "dpi": 150,
     "show": True,
+    "tol": 1e-12
 }
 
 
 def run(cfg=CFG):
     M = nu.make_M(cfg)
     U, sig, V = nu.calc_svd(M)
+    # print("sig:", sig)
     beta = nu.pre_norm(M, cfg)
     tgt = (sig > nu.rank_tol(M, sig)).astype(float)  # sgn(sigma), with sgn(0)=0
+    # print("rank_tol:", nu.rank_tol(M, sig))
+    # print("tgt:", tgt)
     N = nu.sgn_svd(M)
 
     n_max = max(int(max(cfg["k_show"])), int(cfg["n_iters"]))
-    Xs = nu.orbit_matrix(M, nu.coeffs_a(cfg["d"]), n_max, scale=beta)
+    Xs = nu.orbit_matrix(M, nu.coeffs_a(cfg["d"]), n_max, scale=beta, tol=cfg.get("tol"))
     coords = [nu.spec_coords(Xs[int(k)], U, V) for k in cfg["k_show"]]
+    # print("coords[-1]:", coords[-1])
 
     ks = np.arange(cfg["n_iters"] + 1)
     errF = np.array([float(np.linalg.norm(Xs[int(k)] - N)) for k in ks])

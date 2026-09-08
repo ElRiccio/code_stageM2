@@ -10,7 +10,7 @@ CFG = {
     "m": 64,
     "n": 48,
     "seed": 0,
-    "gen": "gauss",          # 'gauss', or 'edit' to overwrite the spectral tail
+    "gen": "edit",          # 'gauss', or 'edit' to overwrite the spectral tail
     "n_zero": 0,
     "n_small": 0,
     "s_small": 1e-6,

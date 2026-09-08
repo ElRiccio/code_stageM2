@@ -12,13 +12,13 @@ CFG = {
     "seed": 0,
     "gen": "edit",          # 'gauss', or 'edit' to overwrite the spectral tail
     "n_zero": 0,
-    "n_small": 0,
+    "n_small": 1,
     "s_small": 1e-6,
     "normalize": True,       # ||M||_2 = 1, so gamma scales with sigma
     "gamma": 0.25,
     "d": 3,
-    "k_show": (1, 2, 3, 5),
-    "k_err": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+    "k_show": (11, 12, 13, 14, 15),
+    "k_err": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20),
     "xaxis": "sigma",        # 'index' or 'sigma'
     "norm_method": "svd",
     "norm_power_iters": 300,
@@ -30,6 +30,7 @@ CFG = {
     "fname": "exp9_soft_spectrum.png",
     "dpi": 150,
     "show": True,
+    "tol": 1e-12
 }
 
 

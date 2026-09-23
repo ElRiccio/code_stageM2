@@ -76,5 +76,5 @@ def device_experiment(
                 t_free = time_call(lambda: _sync_call(lambda: spec.evaluate(M, sgn)), n_repeats=3)
                 return {"error": error, "time_s": t_free}
 
-            results[spec.name][device] = trials.run_trials_multi(trial, n_trials, base_seed)
+            results[spec.name][device] = trials.run_trials_multi(trial, n_trials, base_seed, device=device)
     return results

@@ -39,6 +39,8 @@ def run_trials(
     trial_fn: Callable[[torch.Generator], float],
     n_trials: int,
     base_seed: int,
+    *,
+    device: torch.device | str = "cpu",
 ) -> TrialSummary:
     """Runs `trial_fn` once per trial, each with an independently seeded
     torch.Generator (seed = base_seed + trial index, so a run is exactly
@@ -47,14 +49,18 @@ def run_trials(
 
     `trial_fn` receives the generator and returns a single float (e.g. a
     relative error or a wall-clock time); it is responsible for building
-    whatever random matrix/matrices it needs from that generator.
+    whatever random matrix/matrices it needs from that generator. `device`
+    must match whatever device `trial_fn` draws its random tensors on:
+    torch.Generator is itself device-bound (a CPU generator cannot seed a
+    torch.randn(..., device="cuda", ...) call), so a trial that draws on
+    "cuda" needs device="cuda" here too.
     """
     if n_trials < 1:
         raise ValueError("n_trials must be at least 1")
     seeds = [base_seed + i for i in range(n_trials)]
     values = []
     for seed in seeds:
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.Generator(device=device).manual_seed(seed)
         values.append(float(trial_fn(generator)))
     t = torch.tensor(values, dtype=torch.float64)
     mean = float(t.mean())
@@ -66,17 +72,21 @@ def run_trials_multi(
     trial_fn: Callable[[torch.Generator], dict[str, float]],
     n_trials: int,
     base_seed: int,
+    *,
+    device: torch.device | str = "cpu",
 ) -> dict[str, TrialSummary]:
     """Like `run_trials`, but `trial_fn` returns several named scalars per
     trial (e.g. {"error": ..., "time_s": ...}) from a single random draw,
     so the draw is shared across those quantities instead of redrawn per
-    quantity. Returns one TrialSummary per name."""
+    quantity. Returns one TrialSummary per name. See `run_trials` on why
+    `device` must match the device `trial_fn` draws its random tensors on.
+    """
     if n_trials < 1:
         raise ValueError("n_trials must be at least 1")
     seeds = [base_seed + i for i in range(n_trials)]
     per_key: dict[str, list[float]] = {}
     for seed in seeds:
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.Generator(device=device).manual_seed(seed)
         result = trial_fn(generator)
         for key, val in result.items():
             per_key.setdefault(key, []).append(float(val))

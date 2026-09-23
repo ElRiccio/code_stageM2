@@ -4,9 +4,10 @@ The reusable numerical library. No module here saves a file or reads a
 command-line argument — that belongs to `experiments`.
 
 - `matrices.py` — random test matrices: Gaussian, symmetric, semi-orthogonal
-  factors, and rank-deficient/ill-conditioned constructions (built by an
-  explicit SVD overwrite, kept distinct from the decomposition-free
-  algorithms these matrices are used to test).
+  factors, a matrix with an exactly prescribed spectrum, and
+  rank-deficient/ill-conditioned constructions (built by an explicit SVD
+  overwrite, kept distinct from the decomposition-free algorithms these
+  matrices are used to test).
 - `metrics.py` — reference SVD/eigendecomposition, reference spectral
   operators (`op_svd`, `op_eig`, the decomposition-based ground truth),
   spectral coordinates and frame residuals, and the error norms

@@ -74,6 +74,38 @@ def rand_symmetric(
     return S
 
 
+def rand_prescribed_spectrum(
+    m: int,
+    n: int,
+    sigma: torch.Tensor,
+    *,
+    generator: torch.Generator,
+    device: torch.device | str = "cpu",
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """U diag(sigma) V^T for random semi-orthogonal U (m x r), V (n x r),
+    r = len(sigma): a matrix whose singular values are exactly `sigma`,
+    in any order or spacing.
+
+    This is the direct construction, as opposed to `rand_rank_deficient`'s
+    overwrite-the-tail-of-a-Gaussian approach: overwriting only guarantees
+    the overwritten entries are the smallest of the final spectrum when the
+    overwrite value is smaller than every singular value left untouched, so
+    it is the wrong tool whenever the smallest singular value needs to be
+    controlled to a value comparable to the rest of the spectrum (e.g. 0.6,
+    as opposed to the near-zero values `rand_rank_deficient` is meant for).
+    Use this whenever the whole spectrum, not just its tail, needs to be
+    prescribed exactly.
+    """
+    r = sigma.numel()
+    if r > min(m, n):
+        raise ValueError("need len(sigma) <= min(m, n)")
+    sigma = sigma.to(device=device, dtype=dtype)
+    U = rand_orthogonal_factor(m, r, generator=generator, device=device, dtype=dtype)
+    V = rand_orthogonal_factor(n, r, generator=generator, device=device, dtype=dtype)
+    return (U * sigma) @ V.T
+
+
 def rand_rank_deficient(
     m: int,
     n: int,

@@ -78,6 +78,29 @@ def plot_error_decay(
     setup_axis(ax, xlabel, ylabel, title)
 
 
+def plot_convergence_order(
+    ax,
+    order_tracks: dict[str, torch.Tensor],
+    predicted_orders: dict[str, float] | None = None,
+    title: str = "",
+    xlabel: str = "iteration k",
+    ylabel: str = "empirical order estimate",
+) -> None:
+    """Empirical order estimate p_hat_k against iteration k for one or
+    several named tracks (e.g. one per degree D), each drawn against its own
+    predicted order as a dashed horizontal line in the same color, when
+    `predicted_orders` gives one for that label."""
+    predicted_orders = predicted_orders or {}
+    for i, (label, orders) in enumerate(order_tracks.items()):
+        color = "C%d" % i
+        orders_np = _to_numpy(orders)
+        k = np.arange(orders_np.size)
+        ax.plot(k, orders_np, "o-", ms=3, lw=1.0, color=color, label=label)
+        if label in predicted_orders:
+            ax.axhline(predicted_orders[label], ls="--", lw=0.8, color=color)
+    setup_axis(ax, xlabel, ylabel, title)
+
+
 def save_figure(fig, outdir: str, name: str, dpi: int = 150, show: bool = False) -> None:
     """Tight-layout, save `fig` to outdir/name, and either display or close it."""
     fig.tight_layout()

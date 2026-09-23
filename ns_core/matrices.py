@@ -26,7 +26,7 @@ def rand_gaussian(
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     """Plain m x n Gaussian matrix. Almost surely full rank, spectrum unprescribed."""
-    raise NotImplementedError
+    return torch.randn(m, n, generator=generator, device=device, dtype=dtype)
 
 
 def rand_orthogonal_factor(
@@ -42,7 +42,13 @@ def rand_orthogonal_factor(
     The QR sign ambiguity is pinned (diagonal of R made nonnegative) so that
     runs with the same generator state reproduce exactly.
     """
-    raise NotImplementedError
+    if k > q:
+        raise ValueError("need q >= k for a semi-orthogonal q x k factor")
+    A = rand_gaussian(q, k, generator=generator, device=device, dtype=dtype)
+    Q, R = torch.linalg.qr(A)
+    s = torch.sign(torch.diagonal(R))
+    s = torch.where(s == 0, torch.ones_like(s), s)  # pin the sign, so runs reproduce
+    return Q * s
 
 
 def rand_symmetric(
@@ -59,7 +65,13 @@ def rand_symmetric(
     the convention the rest of the library assumes (every knot/threshold
     passed to a profile is then read directly against the spectrum).
     """
-    raise NotImplementedError
+    A = rand_gaussian(n, n, generator=generator, device=device, dtype=dtype)
+    S = 0.5 * (A + A.T)
+    if normalize:
+        beta = torch.linalg.svdvals(S)[0]
+        if beta > 0:
+            S = S / beta
+    return S
 
 
 def rand_rank_deficient(
@@ -86,4 +98,21 @@ def rand_rank_deficient(
     Requires n_zero + n_small <= min(m, n). If `normalize`, the singular
     values are scaled first so the largest is 1, before the overwrite.
     """
-    raise NotImplementedError
+    if n_zero < 0 or n_small < 0:
+        raise ValueError("n_zero and n_small must be nonnegative")
+    r = min(m, n)
+    if n_zero + n_small > r:
+        raise ValueError("require n_zero + n_small <= min(m, n)")
+    if s_small < 0.0:
+        raise ValueError("s_small must be nonnegative")
+
+    M = rand_gaussian(m, n, generator=generator, device=device, dtype=dtype)
+    U, sigma, Vh = torch.linalg.svd(M, full_matrices=False)
+    sigma = sigma.clone()
+    if normalize and r and sigma[0] > 0:
+        sigma = sigma / sigma[0]
+    if n_small:  # sigma is descending, so the tail is the end of the array
+        sigma[r - n_zero - n_small : r - n_zero] = s_small
+    if n_zero:
+        sigma[r - n_zero :] = 0.0
+    return (U * sigma) @ Vh

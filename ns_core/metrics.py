@@ -21,13 +21,14 @@ import torch
 
 def reference_svd(M: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Thin SVD (U, sigma, V) of M, sigma descending, via torch.linalg.svd."""
-    raise NotImplementedError
+    U, sigma, Vh = torch.linalg.svd(M, full_matrices=False)
+    return U, sigma, Vh.mH
 
 
 def reference_eig(M: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Eigendecomposition (lambda, Q) of a symmetric M, lambda ascending,
     via torch.linalg.eigh."""
-    raise NotImplementedError
+    return torch.linalg.eigh(M)
 
 
 def numerical_rank_tol(M: torch.Tensor, sigma: torch.Tensor) -> float:
@@ -36,7 +37,10 @@ def numerical_rank_tol(M: torch.Tensor, sigma: torch.Tensor) -> float:
     The float reading of the convention sgn(0) = 0: singular values at or
     below this threshold are treated as exactly zero.
     """
-    raise NotImplementedError
+    if sigma.numel() == 0:
+        return 0.0
+    eps = torch.finfo(sigma.dtype).eps
+    return float(max(M.shape) * eps * sigma[0])
 
 
 # ----------------------------------------------------------------------------
@@ -51,7 +55,8 @@ def op_svd(M: torch.Tensor, f: Callable[[torch.Tensor], torch.Tensor]) -> torch.
     may be rank-deficient (see ns_core.cpwl.odd_extension); this function
     does not extend it for you.
     """
-    raise NotImplementedError
+    U, sigma, V = reference_svd(M)
+    return (U * f(sigma)) @ V.mH
 
 
 def op_eig(M: torch.Tensor, f: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
@@ -60,7 +65,8 @@ def op_eig(M: torch.Tensor, f: Callable[[torch.Tensor], torch.Tensor]) -> torch.
     No odd extension is needed here: on Sym^n the profile is applied to the
     eigenvalues as it stands.
     """
-    raise NotImplementedError
+    lam, Q = reference_eig(M)
+    return (Q * f(lam)) @ Q.mH
 
 
 def spectral_coordinates(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
@@ -70,7 +76,7 @@ def spectral_coordinates(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> t
     produced Y keeps the frame of its argument and the underlying scalar
     profile is nondecreasing on [0, 1].
     """
-    raise NotImplementedError
+    return torch.einsum("ji,ji->i", U, Y @ V)
 
 
 def frame_residual(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
@@ -80,7 +86,8 @@ def frame_residual(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.T
     that an approximate map (e.g. a truncated NS iteration) has leaked
     outside the expected spectral coordinates.
     """
-    raise NotImplementedError
+    c = spectral_coordinates(Y, U, V)
+    return torch.linalg.norm(Y - (U * c) @ V.mH)
 
 
 # ----------------------------------------------------------------------------
@@ -90,7 +97,7 @@ def frame_residual(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.T
 
 def frobenius_error(approx: torch.Tensor, exact: torch.Tensor) -> torch.Tensor:
     """|| approx - exact ||_F."""
-    raise NotImplementedError
+    return torch.linalg.norm(approx - exact)
 
 
 def relative_frobenius_error(approx: torch.Tensor, exact: torch.Tensor) -> torch.Tensor:
@@ -100,9 +107,9 @@ def relative_frobenius_error(approx: torch.Tensor, exact: torch.Tensor) -> torch
     quantitative comparison table, alongside iteration/evaluation counts and
     timing (see experiments.svd_comparison).
     """
-    raise NotImplementedError
+    return frobenius_error(approx, exact) / torch.linalg.norm(exact)
 
 
 def spectral_error(approx: torch.Tensor, exact: torch.Tensor) -> torch.Tensor:
     """|| approx - exact ||_2 (exact spectral norm of the difference)."""
-    raise NotImplementedError
+    return torch.linalg.matrix_norm(approx - exact, ord=2)

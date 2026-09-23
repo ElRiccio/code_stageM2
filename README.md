@@ -25,9 +25,15 @@ in `requirements.txt`.
 
 ## Status
 
-Currently: `ns_core` and `experiments` are scaffolded (module layout,
-function signatures, docstrings) but not yet implemented — this is the
-shared-plumbing pass addressing the reviewer's request for an explicit
-experimental protocol (test matrices, rank-deficiency construction,
-reference computations, error norms) before the individual experiments are
-built on top of it.
+`ns_core` is implemented: matrix generation, reference SVD/eigendecomposition
+and error norms, the Newton-Schulz iteration (scalar and matrix readings),
+the matrix sign map (exact and NS-surrogate), admissible-profile constants,
+and the CPWL catalogue with its rectangular and symmetric sign forms. Cross-
+checked against `legacy_numpy/ns_utils.py` on representative inputs
+(coefficients, `bpoly_eval`, admissible constants, basin radius, `Sgn`,
+every CPWL sign form, `op_svd`/`op_eig`, burn-in and iteration-count bounds)
+during development; no persisted test suite, per the project's convention.
+
+`experiments/plotting.py` (generic spectrum/error-decay plot helpers) is
+implemented. No experiment modules exist yet — that's the next pass, one
+module per reviewer-comment question (see `experiments/README.md`).

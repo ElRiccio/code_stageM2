@@ -21,7 +21,7 @@ Sgn = Callable[[torch.Tensor], torch.Tensor]
 
 def sgn_exact(t: torch.Tensor) -> torch.Tensor:
     """Scalar sign, convention sgn(0) = 0."""
-    raise NotImplementedError
+    return torch.sign(t)
 
 
 def sgn_svd(M: torch.Tensor, tol: float | None = None) -> torch.Tensor:
@@ -33,7 +33,11 @@ def sgn_svd(M: torch.Tensor, tol: float | None = None) -> torch.Tensor:
     full SVD), and should never be called from inside a "decomposition-free"
     code path.
     """
-    raise NotImplementedError
+    U, sigma, V = metrics.reference_svd(M)
+    if tol is None:
+        tol = metrics.numerical_rank_tol(M, sigma)
+    signs = (sigma > tol).to(M.dtype)
+    return (U * signs) @ V.mH
 
 
 def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
@@ -46,7 +50,7 @@ def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
     alternative belongs here as a second pre-scaling option once the timing
     comparison (experiments.svd_comparison) needs one.
     """
-    raise NotImplementedError
+    return torch.linalg.matrix_norm(M, ord=2)
 
 
 def make_sgn_ns(
@@ -65,4 +69,19 @@ def make_sgn_ns(
     M`, not on M itself), so the surrogate must not assume its argument is
     already unit-norm.
     """
-    raise NotImplementedError
+
+    def Sgn(M: torch.Tensor) -> torch.Tensor:
+        s = spectral_norm_exact(M) if scale is None else scale
+        s = torch.as_tensor(s, dtype=M.dtype, device=M.device)
+        if s <= 0:
+            return torch.zeros_like(M)
+        coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype).to(device=M.device)
+        X = M / s
+        for _ in range(n_iters):
+            X_prev = X
+            X = ns_iteration.ns_step_matrix(X, coeffs)
+            if tol is not None and torch.linalg.norm(X - X_prev) < tol:
+                break
+        return X
+
+    return Sgn

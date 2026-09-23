@@ -101,6 +101,41 @@ def plot_convergence_order(
     setup_axis(ax, xlabel, ylabel, title)
 
 
+def plot_loglog_order(
+    ax,
+    log10_error_tracks: dict[str, torch.Tensor],
+    predicted_orders: dict[str, float] | None = None,
+    title: str = "",
+    xlabel: str = r"$\log_{10} e_k$",
+    ylabel: str = r"$\log_{10} e_{k+1}$",
+) -> None:
+    """log10(e_{k+1}) against log10(e_k): the reviewer's literal "slope on a
+    log-log plot" reading of the order. Since e_{k+1} ~ C e_k^p, consecutive
+    points from an order-p sequence lie on a line of slope p regardless of
+    C, which is what makes this diagnostic work without knowing the
+    asymptotic constant in advance.
+
+    Each track is a sequence of log10 errors (already in log space, e.g.
+    ns_iteration.log10_error_orbit's output), plotted as the point cloud
+    (log10 e_k, log10 e_{k+1}) for consecutive k. When `predicted_orders`
+    gives a slope p for a label, a dashed reference line of that slope is
+    drawn through the point closest to convergence (the most reliable one),
+    so the eye can compare the data's slope against it directly.
+    """
+    predicted_orders = predicted_orders or {}
+    for i, (label, L) in enumerate(log10_error_tracks.items()):
+        color = "C%d" % i
+        L_np = _to_numpy(L)
+        x, y = L_np[:-1], L_np[1:]
+        ax.plot(x, y, "o", ms=4, color=color, label=label)
+        if label in predicted_orders and x.size:
+            p = predicted_orders[label]
+            x0, y0 = x[-1], y[-1]  # anchor the reference line at the most
+            xs = np.array([x.min(), x.max()])  # converged (most reliable) point
+            ax.plot(xs, y0 + p * (xs - x0), "--", lw=0.8, color=color)
+    setup_axis(ax, xlabel, ylabel, title)
+
+
 def save_figure(fig, outdir: str, name: str, dpi: int = 150, show: bool = False) -> None:
     """Tight-layout, save `fig` to outdir/name, and either display or close it."""
     fig.tight_layout()

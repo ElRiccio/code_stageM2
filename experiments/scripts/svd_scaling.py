@@ -2,7 +2,7 @@
 "a scaling experiment with increasing m, n would be particularly
 important").
 
-Run as `python -m experiments.scripts.svd_scaling`.
+Run as `python -m experiments.scripts.svd_scaling [--device {auto,cpu,cuda}] [--dtype {float32,float64}]`.
 """
 
 from __future__ import annotations
@@ -11,30 +11,35 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
-from experiments import map_catalogue, plotting, svd_scaling, tables
+from experiments import cli, map_catalogue, plotting, svd_scaling, tables
 
 FIGDIR = os.path.join(os.path.dirname(__file__), "..", "figures")
 RESDIR = os.path.join(os.path.dirname(__file__), "..", "results")
 
 
 def main() -> None:
+    device, dtype = cli.parse_device_dtype(
+        default_dtype=torch.float64, description="Scaling with matrix size."
+    )
     map_specs = map_catalogue.all_maps()
-    results = svd_scaling.scaling_experiment(map_specs)
+    results = svd_scaling.scaling_experiment(map_specs, device=device, dtype=dtype)
 
     rows = []
     for name, by_size in results.items():
         for (m, n), quantities in by_size.items():
             err, free, svd = quantities["error"], quantities["decomposition_free_s"], quantities["svd_reference_s"]
             rows.append({
-                "map": name, "m": m, "n": n, "D": svd_scaling.DEFAULT_D,
+                "map": name, "device": str(device), "dtype": cli.dtype_name(dtype),
+                "m": m, "n": n, "D": svd_scaling.DEFAULT_D,
                 "n_trials": len(err.values),
                 "mean_relative_frobenius_error": err.mean, "std_relative_frobenius_error": err.std,
                 "mean_decomposition_free_s": free.mean, "std_decomposition_free_s": free.std,
                 "mean_svd_reference_s": svd.mean, "std_svd_reference_s": svd.std,
                 "seeds": " ".join(str(s) for s in err.seeds),
             })
-    csv_path = tables.save_csv(rows, RESDIR, "scaling_table.csv")
+    csv_path = tables.save_csv(rows, RESDIR, f"scaling_table_{device.type}.csv")
 
     sizes = svd_scaling.SIZES
     ns = np.array([n for _, n in sizes])
@@ -60,10 +65,13 @@ def main() -> None:
     ax_time.set_title("time vs. size (solid=NS, dashed=SVD)")
     ax_time.grid(True, which="both", linewidth=0.3, alpha=0.5)
     ax_time.legend(fontsize=6, ncol=2)
-    fig.suptitle("Scaling with matrix size (fewer trials at larger sizes; see CSV for n_trials per point)")
+    fig.suptitle(
+        f"Scaling with matrix size, {device}/{cli.dtype_name(dtype)} "
+        f"(fewer trials at larger sizes; see CSV for n_trials per point)"
+    )
     fig.tight_layout()
     os.makedirs(FIGDIR, exist_ok=True)
-    fig_path = os.path.join(FIGDIR, "svd_scaling.png")
+    fig_path = os.path.join(FIGDIR, f"svd_scaling_{device.type}.png")
     fig.savefig(fig_path, dpi=150)
     plt.close(fig)
 

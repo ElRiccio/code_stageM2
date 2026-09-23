@@ -15,6 +15,19 @@ into figures.
 - `notebooks/` — exploratory notebooks, for iterating on an experiment or a
   figure before it becomes a script. Not meant to be reproducible drivers.
 
+## Running on CPU or CUDA
+
+Every driver in `scripts/` accepts `--device {auto,cpu,cuda}` and
+`--dtype {float32,float64}` (`experiments/cli.py`; `svd_device.py` instead
+takes `--device {both,cpu,cuda}`, since comparing devices is its whole
+point). `--device auto` (the default) picks CUDA if available, else CPU.
+Output filenames/CSV columns are tagged with the device used, so a CPU and
+a CUDA run of the same driver don't overwrite each other:
+
+```
+python -m experiments.scripts.svd_timing --device cuda --dtype float32
+```
+
 ## Modules
 
 - `convergence_order.py` / `scripts/convergence_order.py` — empirical

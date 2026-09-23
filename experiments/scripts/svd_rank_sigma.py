@@ -3,7 +3,7 @@ SVD-comparison suite (reviewer: "experiments with several ranks and several
 smallest nonzero singular values"; "the influence of conditioning should be
 investigated").
 
-Run as `python -m experiments.scripts.svd_rank_sigma`.
+Run as `python -m experiments.scripts.svd_rank_sigma [--device {auto,cpu,cuda}] [--dtype {float32,float64}]`.
 """
 
 from __future__ import annotations
@@ -11,20 +11,22 @@ from __future__ import annotations
 import os
 
 import matplotlib.pyplot as plt
+import torch
 
-from experiments import map_catalogue, plotting, svd_rank_sigma, tables
+from experiments import cli, map_catalogue, plotting, svd_rank_sigma, tables
 
 FIGDIR = os.path.join(os.path.dirname(__file__), "..", "figures")
 RESDIR = os.path.join(os.path.dirname(__file__), "..", "results")
 
 
-def _rows(results: dict, sweep_name: str) -> list[dict]:
+def _rows(results: dict, sweep_name: str, device: torch.device, dtype: torch.dtype) -> list[dict]:
     rows = []
     for map_name, by_value in results.items():
         for value, quantities in by_value.items():
             err, free = quantities["error"], quantities["decomposition_free_s"]
             rows.append({
                 "sweep": sweep_name, "map": map_name, "value": value,
+                "device": str(device), "dtype": cli.dtype_name(dtype),
                 "n_trials": len(err.values),
                 "mean_relative_frobenius_error": err.mean, "std_relative_frobenius_error": err.std,
                 "mean_decomposition_free_s": free.mean, "std_decomposition_free_s": free.std,
@@ -34,12 +36,15 @@ def _rows(results: dict, sweep_name: str) -> list[dict]:
 
 
 def main() -> None:
+    device, dtype = cli.parse_device_dtype(
+        default_dtype=torch.float64, description="Accuracy/timing vs. rank and sigma_min."
+    )
     map_specs = map_catalogue.all_maps()
-    rank_results = svd_rank_sigma.rank_sweep(map_specs)
-    cond_results = svd_rank_sigma.conditioning_sweep(map_specs)
+    rank_results = svd_rank_sigma.rank_sweep(map_specs, device=device, dtype=dtype)
+    cond_results = svd_rank_sigma.conditioning_sweep(map_specs, device=device, dtype=dtype)
 
-    rows = _rows(rank_results, "rank") + _rows(cond_results, "conditioning")
-    csv_path = tables.save_csv(rows, RESDIR, "rank_sigma_table.csv")
+    rows = _rows(rank_results, "rank", device, dtype) + _rows(cond_results, "conditioning", device, dtype)
+    csv_path = tables.save_csv(rows, RESDIR, f"rank_sigma_table_{device.type}.csv")
 
     r = min(svd_rank_sigma.DEFAULT_M, svd_rank_sigma.DEFAULT_N)
     ranks = [r - nz for nz in svd_rank_sigma.N_ZERO_VALUES]
@@ -67,11 +72,12 @@ def main() -> None:
     ax_cond.set_yscale("log")
     fig.suptitle(
         f"Accuracy vs. SVD under rank deficiency / conditioning, "
-        f"{svd_rank_sigma.DEFAULT_M}x{svd_rank_sigma.DEFAULT_N}, D={svd_rank_sigma.DEFAULT_D}"
+        f"{svd_rank_sigma.DEFAULT_M}x{svd_rank_sigma.DEFAULT_N}, D={svd_rank_sigma.DEFAULT_D}, "
+        f"{device}/{cli.dtype_name(dtype)}"
     )
     fig.tight_layout()
     os.makedirs(FIGDIR, exist_ok=True)
-    fig_path = os.path.join(FIGDIR, "svd_rank_sigma.png")
+    fig_path = os.path.join(FIGDIR, f"svd_rank_sigma_{device.type}.png")
     fig.savefig(fig_path, dpi=150)
     plt.close(fig)
 

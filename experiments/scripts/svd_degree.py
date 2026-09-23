@@ -2,7 +2,7 @@
 comparison suite (reviewer: "the matrix experiments use D=3 throughout ...
 compare D=1,2,3,... numerically and verify the conclusions of Chapter 4").
 
-Run as `python -m experiments.scripts.svd_degree`.
+Run as `python -m experiments.scripts.svd_degree [--device {auto,cpu,cuda}] [--dtype {float32,float64}]`.
 """
 
 from __future__ import annotations
@@ -10,28 +10,33 @@ from __future__ import annotations
 import os
 
 import matplotlib.pyplot as plt
+import torch
 
-from experiments import map_catalogue, plotting, svd_degree, tables
+from experiments import cli, map_catalogue, plotting, svd_degree, tables
 
 FIGDIR = os.path.join(os.path.dirname(__file__), "..", "figures")
 RESDIR = os.path.join(os.path.dirname(__file__), "..", "results")
 
 
 def main() -> None:
+    device, dtype = cli.parse_device_dtype(
+        default_dtype=torch.float64, description="Dependence on degree D."
+    )
     map_specs = map_catalogue.all_maps()
-    results = svd_degree.degree_sweep(map_specs)
+    results = svd_degree.degree_sweep(map_specs, device=device, dtype=dtype)
 
     rows = []
     for map_name, by_D in results.items():
         for D, quantities in by_D.items():
             err, free = quantities["error"], quantities["decomposition_free_s"]
             rows.append({
-                "map": map_name, "D": D, "n_trials": len(err.values),
+                "map": map_name, "D": D, "device": str(device), "dtype": cli.dtype_name(dtype),
+                "n_trials": len(err.values),
                 "mean_relative_frobenius_error": err.mean, "std_relative_frobenius_error": err.std,
                 "mean_decomposition_free_s": free.mean, "std_decomposition_free_s": free.std,
                 "seeds": " ".join(str(s) for s in err.seeds),
             })
-    csv_path = tables.save_csv(rows, RESDIR, "degree_table.csv")
+    csv_path = tables.save_csv(rows, RESDIR, f"degree_table_{device.type}.csv")
 
     fig, (ax_err, ax_time) = plt.subplots(1, 2, figsize=(11.0, 4.4))
     for i, spec in enumerate(map_specs):
@@ -54,11 +59,11 @@ def main() -> None:
     ax_err.set_yscale("log")
     fig.suptitle(
         f"Dependence on degree D, {svd_degree.DEFAULT_M}x{svd_degree.DEFAULT_N}, "
-        f"fixed NS iteration budget"
+        f"{device}/{cli.dtype_name(dtype)}, fixed NS iteration budget"
     )
     fig.tight_layout()
     os.makedirs(FIGDIR, exist_ok=True)
-    fig_path = os.path.join(FIGDIR, "svd_degree.png")
+    fig_path = os.path.join(FIGDIR, f"svd_degree_{device.type}.png")
     fig.savefig(fig_path, dpi=150)
     plt.close(fig)
 

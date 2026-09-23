@@ -2,7 +2,9 @@
 (reviewer comment on verifying the predicted order D+1, not just observing
 convergence "to machine precision").
 
-Run as `python -m experiments.scripts.convergence_order`.
+Run as `python -m experiments.scripts.convergence_order [--device {auto,cpu,cuda}] [--dtype {float32,float64}]`.
+`--device`/`--dtype` affect only the matrix-iteration check (the scalar
+orbit is plain-float64 Python arithmetic, unaffected by either).
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ import os
 import matplotlib.pyplot as plt
 import torch
 
-from experiments import convergence_order, plotting
+from experiments import cli, convergence_order, plotting
 
 OUTDIR = os.path.join(os.path.dirname(__file__), "..", "figures")
 
@@ -91,13 +93,17 @@ def _loglog_grid(results: dict[int, dict], log10_key: str, suptitle: str) -> plt
 
 
 def main() -> None:
-    generator = torch.Generator().manual_seed(0)
+    device, dtype = cli.parse_device_dtype(
+        default_dtype=torch.float64, description="Empirical order-(D+1) convergence validation."
+    )
+    generator = torch.Generator(device=device).manual_seed(0)
 
     scalar = convergence_order.degree_sweep_scalar(
         D_VALUES, U0, N_ITERS_SCALAR, deflate=DEFLATE_SCALAR
     )
     matrix = convergence_order.degree_sweep_matrix(
-        D_VALUES, SIGMA_MIN, MATRIX_M, MATRIX_N, N_ITERS_MATRIX, generator=generator
+        D_VALUES, SIGMA_MIN, MATRIX_M, MATRIX_N, N_ITERS_MATRIX,
+        generator=generator, device=device, dtype=dtype,
     )
 
     fig, ax = plt.subplots(figsize=(5.5, 4.2))
@@ -119,19 +125,21 @@ def main() -> None:
         ax,
         list(range(N_ITERS_MATRIX + 1)),
         {f"D={D}": _errors(matrix[D]["matrix_log10_error"]) for D in D_VALUES},
-        title=f"matrix NS iteration error, sigma_min={SIGMA_MIN}, {MATRIX_M}x{MATRIX_N}",
+        title=f"matrix NS iteration error, sigma_min={SIGMA_MIN}, {MATRIX_M}x{MATRIX_N}, "
+        f"{device}/{cli.dtype_name(dtype)}",
         ylabel=r"$\|X_k - \mathrm{Sgn}(M)\|_2$",
     )
-    plotting.save_figure(fig, OUTDIR, "convergence_order_matrix_error.png")
+    plotting.save_figure(fig, OUTDIR, f"convergence_order_matrix_error_{device.type}.png")
 
     fig = _loglog_grid(
-        matrix, "matrix_log10_error", "order = slope on the log-log plot (matrix iteration)"
+        matrix, "matrix_log10_error",
+        f"order = slope on the log-log plot (matrix iteration, {device}/{cli.dtype_name(dtype)})",
     )
-    plotting.save_figure(fig, OUTDIR, "convergence_order_matrix_loglog.png")
+    plotting.save_figure(fig, OUTDIR, f"convergence_order_matrix_loglog_{device.type}.png")
 
     floor = matrix[D_VALUES[0]]["precision_floor"]
     print(
-        f"matrix-level errors are only meaningful above the float64 "
+        f"matrix-level errors are only meaningful above the {cli.dtype_name(dtype)} "
         f"precision floor (~1e{floor:.0f}); order estimates computed from "
         f"errors below that are noise, not a violation of the theory."
     )

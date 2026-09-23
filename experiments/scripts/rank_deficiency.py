@@ -6,7 +6,7 @@ studied).
 Single random matrix per (D, swept value) for now - no repeats/averaging
 yet; that's a natural follow-up once this shape is settled.
 
-Run as `python -m experiments.scripts.rank_deficiency`.
+Run as `python -m experiments.scripts.rank_deficiency [--device {auto,cpu,cuda}] [--dtype {float32,float64}]`.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import os
 import matplotlib.pyplot as plt
 import torch
 
-from experiments import plotting, rank_deficiency
+from experiments import cli, plotting, rank_deficiency
 
 OUTDIR = os.path.join(os.path.dirname(__file__), "..", "figures")
 
@@ -37,13 +37,18 @@ def _as_plot_series(iters_by_x: dict, x_values: list[float]) -> list[float]:
 
 
 def main() -> None:
-    generator = torch.Generator().manual_seed(0)
+    device, dtype = cli.parse_device_dtype(
+        default_dtype=torch.float64, description="Rank-deficiency and conditioning sweeps."
+    )
+    generator = torch.Generator(device=device).manual_seed(0)
 
     rank_results = rank_deficiency.rank_sweep(
         N_ZERO_VALUES, M, N, D_VALUES, N_ITERS, tol=TOL, generator=generator,
+        device=device, dtype=dtype,
     )
     cond_results = rank_deficiency.conditioning_sweep(
         SIGMA_MIN_VALUES, M, N, D_VALUES, N_ITERS, tol=TOL, generator=generator,
+        device=device, dtype=dtype,
     )
 
     ranks = [R - nz for nz in N_ZERO_VALUES]
@@ -72,8 +77,11 @@ def main() -> None:
             label=f"D={D}",
             color=color,
         )
-    fig.suptitle(f"iterations to tolerance, {M}x{N} (single matrix per point, no averaging yet)")
-    plotting.save_figure(fig, OUTDIR, "rank_deficiency_iterations.png")
+    fig.suptitle(
+        f"iterations to tolerance, {M}x{N}, {device}/{cli.dtype_name(dtype)} "
+        f"(single matrix per point, no averaging yet)"
+    )
+    plotting.save_figure(fig, OUTDIR, f"rank_deficiency_iterations_{device.type}.png")
 
     for label, results, x_values in [
         ("rank sweep", rank_results, N_ZERO_VALUES),

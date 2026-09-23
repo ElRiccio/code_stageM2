@@ -21,7 +21,14 @@ import torch
 
 from ns_core import metrics, sign_map
 from experiments import map_catalogue, trials
-from experiments.svd_accuracy import DEFAULT_BASE_SEED, DEFAULT_M, DEFAULT_N, N_ITERS_CAP, TOL_NS
+from experiments.svd_accuracy import (
+    DEFAULT_BASE_SEED,
+    DEFAULT_M,
+    DEFAULT_N,
+    N_ITERS_CAP,
+    TOL_NS,
+    default_tol_for,
+)
 from experiments.svd_timing import time_call
 
 D_VALUES = [1, 2, 3, 4]
@@ -35,7 +42,7 @@ def degree_sweep(
     n: int = DEFAULT_N,
     *,
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     n_trials: int = DEFAULT_N_TRIALS,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float64,
@@ -45,7 +52,12 @@ def degree_sweep(
     D in `D_values`, at fixed matrix size, mean/std over `n_trials`
     independent Gaussian matrices. Returns {map_name: {D: {"error": ...,
     "decomposition_free_s": ...}}} (TrialSummary values).
+
+    `tol` defaults to `default_tol_for(dtype)` (see experiments.svd_accuracy)
+    rather than the float64-appropriate TOL_NS.
     """
+    if tol is None:
+        tol = default_tol_for(dtype)
     results: dict[str, dict[int, dict]] = {spec.name: {} for spec in map_specs}
     for D in D_values:
         for spec in map_specs:

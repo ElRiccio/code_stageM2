@@ -23,7 +23,7 @@ import torch
 
 from ns_core import metrics, sign_map
 from experiments import map_catalogue, trials
-from experiments.svd_accuracy import DEFAULT_BASE_SEED, DEFAULT_D, N_ITERS_CAP, TOL_NS
+from experiments.svd_accuracy import DEFAULT_BASE_SEED, DEFAULT_D, N_ITERS_CAP, TOL_NS, default_tol_for
 from experiments.svd_timing import time_call
 
 SIZES = [(32, 24), (64, 48), (128, 96), (256, 192), (512, 384)]
@@ -48,7 +48,7 @@ def scaling_experiment(
     D: int = DEFAULT_D,
     *,
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
@@ -59,7 +59,12 @@ def scaling_experiment(
 
     Returns {map_name: {(m, n): {"error": ..., "decomposition_free_s": ...,
     "svd_reference_s": ...}}} (TrialSummary values).
+
+    `tol` defaults to `default_tol_for(dtype)` (see experiments.svd_accuracy)
+    rather than the float64-appropriate TOL_NS.
     """
+    if tol is None:
+        tol = default_tol_for(dtype)
     results: dict[str, dict[tuple[int, int], dict[str, trials.TrialSummary]]] = {
         spec.name: {} for spec in map_specs
     }

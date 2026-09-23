@@ -31,6 +31,7 @@ from experiments.svd_accuracy import (
     DEFAULT_N_TRIALS,
     N_ITERS_CAP,
     TOL_NS,
+    default_tol_for,
 )
 
 N_TIMING_REPEATS = 5
@@ -68,7 +69,7 @@ def timing_experiment(
     D: int,
     *,
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     n_trials: int = DEFAULT_N_TRIALS,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float64,
@@ -82,7 +83,13 @@ def timing_experiment(
     "svd_reference_s": TrialSummary, "speedup": TrialSummary}}, speedup
     being svd_reference_s / decomposition_free_s per trial (so its mean/std
     is a distribution over trials, not the ratio of the two means).
+
+    `tol` defaults to `default_tol_for(dtype)` (see experiments.svd_accuracy)
+    rather than the float64-appropriate TOL_NS, so the NS early stop still
+    fires at float32 instead of always burning the full `n_iters` cap.
     """
+    if tol is None:
+        tol = default_tol_for(dtype)
     results: dict[str, dict[str, trials.TrialSummary]] = {}
     for spec in map_specs:
 

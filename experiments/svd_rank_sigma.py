@@ -23,7 +23,15 @@ import torch
 
 from ns_core import matrices, metrics, sign_map
 from experiments import map_catalogue, trials
-from experiments.svd_accuracy import DEFAULT_BASE_SEED, DEFAULT_D, DEFAULT_M, DEFAULT_N, N_ITERS_CAP, TOL_NS
+from experiments.svd_accuracy import (
+    DEFAULT_BASE_SEED,
+    DEFAULT_D,
+    DEFAULT_M,
+    DEFAULT_N,
+    N_ITERS_CAP,
+    TOL_NS,
+    default_tol_for,
+)
 from experiments.svd_timing import time_call
 
 N_ZERO_VALUES = [0, 6, 12, 18, 23]  # out of r = min(DEFAULT_M, DEFAULT_N) = 48
@@ -71,14 +79,20 @@ def rank_sweep(
     D: int = DEFAULT_D,
     *,
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     n_trials: int = DEFAULT_N_TRIALS_SWEEP,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> dict[str, dict[int, dict]]:
     """Accuracy/timing vs. rank deficiency (n_zero exact-zero singular
-    values, matrices.rand_rank_deficient), one series per map at fixed D."""
+    values, matrices.rand_rank_deficient), one series per map at fixed D.
+
+    `tol` defaults to `default_tol_for(dtype)` (see experiments.svd_accuracy)
+    rather than the float64-appropriate TOL_NS.
+    """
+    if tol is None:
+        tol = default_tol_for(dtype)
 
     def build_matrix(n_zero: int, generator: torch.Generator) -> torch.Tensor:
         return matrices.rand_rank_deficient(
@@ -99,7 +113,7 @@ def conditioning_sweep(
     D: int = DEFAULT_D,
     *,
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     n_trials: int = DEFAULT_N_TRIALS_SWEEP,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float64,
@@ -107,7 +121,13 @@ def conditioning_sweep(
 ) -> dict[str, dict[float, dict]]:
     """Accuracy/timing vs. the smallest nonzero singular value sigma_min
     (matrices.rand_rank_deficient, n_small=1), one series per map at fixed
-    D."""
+    D.
+
+    `tol` defaults to `default_tol_for(dtype)` (see experiments.svd_accuracy)
+    rather than the float64-appropriate TOL_NS.
+    """
+    if tol is None:
+        tol = default_tol_for(dtype)
 
     def build_matrix(sigma_min: float, generator: torch.Generator) -> torch.Tensor:
         return matrices.rand_rank_deficient(

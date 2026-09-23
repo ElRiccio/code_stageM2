@@ -31,9 +31,27 @@ from experiments import map_catalogue, trials
 DEFAULT_M, DEFAULT_N = 64, 48
 DEFAULT_D = 3
 N_ITERS_CAP = 40
-TOL_NS = 1e-12
+TOL_NS = 1e-12  # appropriate for float64; see default_tol_for for float32
 DEFAULT_N_TRIALS = 10
 DEFAULT_BASE_SEED = 0
+
+# float64 machine epsilon ~1.1e-16, float32's ~1.2e-7: a tol tight enough to
+# be meaningful at float64 (TOL_NS above) is unreachable at float32, so the
+# early stop in ns_core.sign_map.make_sgn_ns never fires there and every
+# call burns the full N_ITERS_CAP regardless of actual convergence -- wasted
+# work that is particularly costly on GPU, where per-NS-step kernel-launch
+# overhead dominates at this suite's matrix sizes. `tol=None` (the default
+# below) resolves to the entry here matching the dtype actually used;
+# passing an explicit tol always overrides it.
+_DEFAULT_TOL_BY_DTYPE: dict[torch.dtype, float] = {
+    torch.float64: TOL_NS,
+    torch.float32: 1e-6,
+}
+
+
+def default_tol_for(dtype: torch.dtype) -> float:
+    """The NS early-stop tolerance appropriate for `dtype`."""
+    return _DEFAULT_TOL_BY_DTYPE.get(dtype, TOL_NS)
 
 
 def accuracy_experiment(
@@ -43,7 +61,7 @@ def accuracy_experiment(
     D: int,
     *,
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     n_trials: int = DEFAULT_N_TRIALS,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float64,
@@ -52,7 +70,14 @@ def accuracy_experiment(
     """Relative Frobenius error of each map vs. its exact SVD-based
     reference, on independent m x n Gaussian matrices (unit spectral norm),
     at fixed degree D. Returns {map_name: TrialSummary}.
+
+    `tol` is the NS early-stop tolerance passed to
+    ns_core.sign_map.make_sgn_ns; if not given (the default), it is picked
+    to match `dtype` via `default_tol_for` rather than defaulting to the
+    float64-appropriate TOL_NS regardless of dtype.
     """
+    if tol is None:
+        tol = default_tol_for(dtype)
     results: dict[str, trials.TrialSummary] = {}
     for spec in map_specs:
 

@@ -27,12 +27,14 @@ import torch
 
 from ns_core import metrics, sign_map
 from experiments import map_catalogue, trials
-from experiments.svd_accuracy import DEFAULT_BASE_SEED, DEFAULT_D
+from experiments.svd_accuracy import DEFAULT_BASE_SEED, DEFAULT_D, default_tol_for
 from experiments.svd_timing import time_call
 
 DEFAULT_SIZE = (512, 384)
 N_ITERS_CAP = 40
-TOL_NS = 1e-6  # float32: no point chasing a float64-scale tolerance
+TOL_NS = 1e-6  # float32: no point chasing a float64-scale tolerance (this
+# module's own default dtype); default_tol_for(dtype) is still used below so
+# an explicit dtype=torch.float64 override still gets an appropriate tol.
 DEFAULT_N_TRIALS = 5
 
 
@@ -44,7 +46,7 @@ def device_experiment(
     *,
     devices: Sequence[str] = ("cpu", "cuda"),
     n_iters: int = N_ITERS_CAP,
-    tol: float = TOL_NS,
+    tol: float | None = None,
     n_trials: int = DEFAULT_N_TRIALS,
     base_seed: int = DEFAULT_BASE_SEED,
     dtype: torch.dtype = torch.float32,
@@ -54,7 +56,13 @@ def device_experiment(
     False). Returns {map_name: {device: {"error": ..., "time_s": ...}}}
     (TrialSummary values); a skipped device is simply absent from the
     result rather than reported as a failure.
+
+    `tol` defaults to `default_tol_for(dtype)` (see experiments.svd_accuracy)
+    -- 1e-6 at this module's own default dtype (float32), matching TOL_NS
+    above, but still appropriate if `dtype` is overridden to float64.
     """
+    if tol is None:
+        tol = default_tol_for(dtype)
     available = [d for d in devices if d == "cpu" or torch.cuda.is_available()]
     results: dict[str, dict[str, dict]] = {spec.name: {} for spec in map_specs}
     for device in available:

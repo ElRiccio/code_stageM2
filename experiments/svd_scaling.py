@@ -73,9 +73,9 @@ def scaling_experiment(
                 approx = spec.evaluate(M, sgn)
                 exact = spec.reference(M)
                 error = metrics.relative_frobenius_error(approx, exact).item()
-                t_free = time_call(lambda: spec.evaluate(M, sgn))
-                t_svd = time_call(lambda: spec.reference(M))
+                t_free = time_call(lambda: spec.evaluate(M, sgn), device=device)
+                t_svd = time_call(lambda: spec.reference(M), device=device)
                 return {"error": error, "decomposition_free_s": t_free, "svd_reference_s": t_svd}
 
-            results[spec.name][(m, n)] = trials.run_trials_multi(trial, n_trials, base_seed)
+            results[spec.name][(m, n)] = trials.run_trials_multi(trial, n_trials, base_seed, device=device)
     return results

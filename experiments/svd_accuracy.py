@@ -63,5 +63,5 @@ def accuracy_experiment(
             exact = spec.reference(M)
             return metrics.relative_frobenius_error(approx, exact).item()
 
-        results[spec.name] = trials.run_trials(trial, n_trials, base_seed)
+        results[spec.name] = trials.run_trials(trial, n_trials, base_seed, device=device)
     return results

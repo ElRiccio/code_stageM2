@@ -66,14 +66,7 @@ def device_experiment(
                 approx = spec.evaluate(M, sgn)
                 exact = spec.reference(M)
                 error = metrics.relative_frobenius_error(approx, exact).item()
-
-                def _sync_call(fn):
-                    out = fn()
-                    if device == "cuda":
-                        torch.cuda.synchronize()
-                    return out
-
-                t_free = time_call(lambda: _sync_call(lambda: spec.evaluate(M, sgn)), n_repeats=3)
+                t_free = time_call(lambda: spec.evaluate(M, sgn), n_repeats=3, device=device)
                 return {"error": error, "time_s": t_free}
 
             results[spec.name][device] = trials.run_trials_multi(trial, n_trials, base_seed, device=device)

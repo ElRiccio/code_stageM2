@@ -36,14 +36,27 @@ from experiments.svd_accuracy import (
 N_TIMING_REPEATS = 5
 
 
-def time_call(fn, n_repeats: int = N_TIMING_REPEATS) -> float:
+def time_call(fn, n_repeats: int = N_TIMING_REPEATS, *, device: torch.device | str = "cpu") -> float:
     """Minimum wall-clock time, in seconds, of `n_repeats` calls to the
-    zero-argument callable `fn`, after one untimed warm-up call."""
+    zero-argument callable `fn`, after one untimed warm-up call.
+
+    CUDA kernel launches are asynchronous: without a synchronize, time.
+    perf_counter() around a "cuda" call would measure only launch overhead,
+    not the actual device compute time, making GPU calls look implausibly
+    fast. When `device` names a CUDA device, this calls
+    torch.cuda.synchronize() after the warm-up and after every timed call,
+    so the reported time is the real, completed-work time in both cases.
+    """
+    is_cuda = torch.device(device).type == "cuda"
     fn()  # warm-up, not timed
+    if is_cuda:
+        torch.cuda.synchronize()
     best = float("inf")
     for _ in range(n_repeats):
         t0 = time.perf_counter()
         fn()
+        if is_cuda:
+            torch.cuda.synchronize()
         best = min(best, time.perf_counter() - t0)
     return best
 
@@ -76,13 +89,13 @@ def timing_experiment(
         def trial(generator: torch.Generator, spec=spec) -> dict[str, float]:
             M = map_catalogue.unit_norm_gaussian(m, n, generator=generator, device=device, dtype=dtype)
             sgn = sign_map.make_sgn_ns(D, n_iters, tol=tol)
-            t_free = time_call(lambda: spec.evaluate(M, sgn))
-            t_svd = time_call(lambda: spec.reference(M))
+            t_free = time_call(lambda: spec.evaluate(M, sgn), device=device)
+            t_svd = time_call(lambda: spec.reference(M), device=device)
             return {
                 "decomposition_free_s": t_free,
                 "svd_reference_s": t_svd,
                 "speedup": t_svd / t_free if t_free > 0 else float("nan"),
             }
 
-        results[spec.name] = trials.run_trials_multi(trial, n_trials, base_seed)
+        results[spec.name] = trials.run_trials_multi(trial, n_trials, base_seed, device=device)
     return results

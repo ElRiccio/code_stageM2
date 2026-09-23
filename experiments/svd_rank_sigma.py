@@ -56,10 +56,10 @@ def _sweep(
                 approx = spec.evaluate(M, sgn)
                 exact = spec.reference(M)
                 error = metrics.relative_frobenius_error(approx, exact).item()
-                t_free = time_call(lambda: spec.evaluate(M, sgn), n_repeats=3)
+                t_free = time_call(lambda: spec.evaluate(M, sgn), n_repeats=3, device=device)
                 return {"error": error, "decomposition_free_s": t_free}
 
-            results[spec.name][value] = trials.run_trials_multi(trial, n_trials, base_seed)
+            results[spec.name][value] = trials.run_trials_multi(trial, n_trials, base_seed, device=device)
     return results
 
 

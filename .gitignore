@@ -13,12 +13,6 @@ figures/
 *.csv
 *.pkl
 
-# Experiment scripts to keep out of git
-ns_core.py
-ns_vs_svd_timing.py
-prox_nuclear_plots.py
-quintic_graphs.py
-
 # VS Code
 .vscode/
 

@@ -7,6 +7,7 @@ Run as `python -m experiments.scripts.convergence_order`.
 
 from __future__ import annotations
 
+import math
 import os
 
 import matplotlib.pyplot as plt
@@ -20,10 +21,21 @@ D_VALUES = [1, 2, 3, 4]
 
 U0 = 0.1
 N_ITERS_SCALAR = 6
+# deflate=False: plot the scalar orbit's error by plain subtraction, the
+# same operation the matrix case is stuck with, so it hits the same
+# float64 noise floor after a few steps instead of the deflated form's
+# unlimited decades. See ns_iteration.log10_error_orbit's docstring.
+DEFLATE_SCALAR = False
 
-SIGMA_MIN = 0.6
-MATRIX_SIZE = 30
-N_ITERS_MATRIX = 6
+# A small sigma_min (matching U0) rather than a comfortable 0.6: the whole
+# point of order D+1 is that it converges explosively fast, so a starting
+# point close to 1 burns through the entire pre-floor transient in 1-2
+# steps at high D, leaving almost nothing to fit a slope to. Starting
+# further from 1 stretches that transient out, at the cost of needing a
+# couple more iterations to reach it.
+SIGMA_MIN = 0.1
+MATRIX_M, MATRIX_N = 40, 25  # rectangular on purpose; nothing here needs square
+N_ITERS_MATRIX = 8
 
 
 def _errors(log10_err: torch.Tensor) -> list[float]:
@@ -65,11 +77,13 @@ def _loglog_grid(results: dict[int, dict], log10_key: str, suptitle: str) -> plt
     fig, axes = plt.subplots(1, len(D_VALUES), figsize=(3.2 * len(D_VALUES), 3.6))
     for ax, D in zip(axes, D_VALUES):
         log10_err = _drop_after_stall(results[D][log10_key])
+        p = results[D]["predicted_order"]
+        log10_const = math.log10(results[D]["asymptotic_constant"])
         plotting.plot_loglog_order(
             ax,
             {f"D={D}": log10_err},
-            {f"D={D}": results[D]["predicted_order"]},
-            title=f"D={D} (slope {results[D]['predicted_order']})",
+            {f"D={D}": (p, log10_const)},
+            title=f"D={D} (slope {p})",
             ylabel=r"$\log_{10} e_{k+1}$" if D == D_VALUES[0] else "",
         )
     fig.suptitle(suptitle)
@@ -79,9 +93,11 @@ def _loglog_grid(results: dict[int, dict], log10_key: str, suptitle: str) -> plt
 def main() -> None:
     generator = torch.Generator().manual_seed(0)
 
-    scalar = convergence_order.degree_sweep_scalar(D_VALUES, U0, N_ITERS_SCALAR)
+    scalar = convergence_order.degree_sweep_scalar(
+        D_VALUES, U0, N_ITERS_SCALAR, deflate=DEFLATE_SCALAR
+    )
     matrix = convergence_order.degree_sweep_matrix(
-        D_VALUES, SIGMA_MIN, MATRIX_SIZE, N_ITERS_MATRIX, generator=generator
+        D_VALUES, SIGMA_MIN, MATRIX_M, MATRIX_N, N_ITERS_MATRIX, generator=generator
     )
 
     fig, ax = plt.subplots(figsize=(5.5, 4.2))
@@ -89,8 +105,9 @@ def main() -> None:
         ax,
         list(range(N_ITERS_SCALAR + 1)),
         {f"D={D}": _errors(scalar[D]["log10_error"]) for D in D_VALUES},
-        title=f"scalar orbit error |1 - u_k|, u0={U0}",
-        ylabel="error (deflated past 1e-8)",
+        title=f"scalar orbit error |1 - u_k|, u0={U0}"
+        + (" (raw, no deflation)" if not DEFLATE_SCALAR else ""),
+        ylabel="error",
     )
     plotting.save_figure(fig, OUTDIR, "convergence_order_scalar_error.png")
 
@@ -102,7 +119,7 @@ def main() -> None:
         ax,
         list(range(N_ITERS_MATRIX + 1)),
         {f"D={D}": _errors(matrix[D]["matrix_log10_error"]) for D in D_VALUES},
-        title=f"matrix NS iteration error, sigma_min={SIGMA_MIN}, n={MATRIX_SIZE}",
+        title=f"matrix NS iteration error, sigma_min={SIGMA_MIN}, {MATRIX_M}x{MATRIX_N}",
         ylabel=r"$\|X_k - \mathrm{Sgn}(M)\|_2$",
     )
     plotting.save_figure(fig, OUTDIR, "convergence_order_matrix_error.png")

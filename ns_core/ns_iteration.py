@@ -174,14 +174,24 @@ def scalar_orbit(u0: torch.Tensor, D: int, n_iters: int) -> torch.Tensor:
     return out
 
 
-def log10_error_orbit(u0: float, D: int, n_iters: int, switch: float = 1e-8) -> torch.Tensor:
-    """log10 |1 - u_k| for u0 in (0, 1), switching to the deflated form
+def log10_error_orbit(
+    u0: float, D: int, n_iters: int, switch: float = 1e-8, *, deflate: bool = True
+) -> torch.Tensor:
+    """log10 |1 - u_k| for u0 in (0, 1).
+
+    With `deflate` (the default), switches to the deflated form
     (D+1) log10|1 - u_k| + log10|psi_D(u_k)| once |1 - u_k| <= `switch`, to
     stay accurate past the point where direct subtraction would cancel.
-
     This is the quantity a numerical check of the theoretical order-(D+1)
     convergence rate is built on: the slope of this curve, or of the
-    corresponding log-log error-ratio plot, should approach D+1.
+    corresponding log-log error-ratio plot, should approach D+1. With
+    deflate=False, computes the same error by plain subtraction 1 - u_k
+    throughout instead, with no protection against that cancellation. This
+    exists to demonstrate what the deflated form buys: past a certain
+    point u_k rounds to exactly 1.0 in floating point, the subtraction
+    reads exactly 0, and the sequence plateaus at a float64 noise floor —
+    the same wall ns_iteration.ns_orbit_matrix's matrix-level error hits,
+    and for the same reason (there is no deflated form for a matrix).
     """
     u0 = float(u0)
     if not 0.0 < u0 < 1.0:
@@ -189,13 +199,26 @@ def log10_error_orbit(u0: float, D: int, n_iters: int, switch: float = 1e-8) -> 
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")
 
-    psi = deflation_coeffs(D, dtype=torch.float64).tolist()
-    log_psi_1 = math.log10(asymptotic_error_constant(D))
-
+    # Keeps log10 defined once u has rounded to exactly 1.0 (deflate=False
+    # only): float64 machine epsilon scale, not an arbitrary tiny number,
+    # so a floored run reads at the same visual scale as a real
+    # finite-precision floor (e.g. the matrix iteration's), rather than
+    # shooting off to a meaningless extreme.
+    floor = torch.finfo(torch.float64).eps
     L = [0.0] * (n_iters + 1)
     u = u0
     e = 1.0 - u
-    L[0] = math.log10(e)
+    L[0] = math.log10(max(e, floor))
+
+    if not deflate:
+        for k in range(n_iters):
+            u = min(max(_p_d_scalar(u, D), 0.0), 1.0)
+            e = 1.0 - u
+            L[k + 1] = math.log10(max(e, floor))
+        return torch.tensor(L, dtype=torch.float64)
+
+    psi = deflation_coeffs(D, dtype=torch.float64).tolist()
+    log_psi_1 = math.log10(asymptotic_error_constant(D))
     for k in range(n_iters):
         if e > switch:
             u_next = min(max(_p_d_scalar(u, D), 0.0), 1.0)

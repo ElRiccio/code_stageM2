@@ -104,7 +104,7 @@ def plot_convergence_order(
 def plot_loglog_order(
     ax,
     log10_error_tracks: dict[str, torch.Tensor],
-    predicted_orders: dict[str, float] | None = None,
+    reference_lines: dict[str, tuple[float, float]] | None = None,
     title: str = "",
     xlabel: str = r"$\log_{10} e_k$",
     ylabel: str = r"$\log_{10} e_{k+1}$",
@@ -117,22 +117,26 @@ def plot_loglog_order(
 
     Each track is a sequence of log10 errors (already in log space, e.g.
     ns_iteration.log10_error_orbit's output), plotted as the point cloud
-    (log10 e_k, log10 e_{k+1}) for consecutive k. When `predicted_orders`
-    gives a slope p for a label, a dashed reference line of that slope is
-    drawn through the point closest to convergence (the most reliable one),
-    so the eye can compare the data's slope against it directly.
+    (log10 e_k, log10 e_{k+1}) for consecutive k. `reference_lines` maps a
+    label to (slope, log10_constant): the dashed line
+    log10 e_{k+1} = log10_constant + slope * log10 e_k, i.e.
+    e_{k+1} = constant * e_k^slope. The line is anchored at the known
+    constant (e.g. ns_iteration.asymptotic_error_constant(D)), not through
+    any one data point: the most extreme (bottom-left) data point is, by
+    construction, the one closest to a finite-precision computation's noise
+    floor, so anchoring there would let a single unreliable point set the
+    position of the whole line.
     """
-    predicted_orders = predicted_orders or {}
+    reference_lines = reference_lines or {}
     for i, (label, L) in enumerate(log10_error_tracks.items()):
         color = "C%d" % i
         L_np = _to_numpy(L)
         x, y = L_np[:-1], L_np[1:]
         ax.plot(x, y, "o", ms=4, color=color, label=label)
-        if label in predicted_orders and x.size:
-            p = predicted_orders[label]
-            x0, y0 = x[-1], y[-1]  # anchor the reference line at the most
-            xs = np.array([x.min(), x.max()])  # converged (most reliable) point
-            ax.plot(xs, y0 + p * (xs - x0), "--", lw=0.8, color=color)
+        if label in reference_lines and x.size:
+            slope, log10_const = reference_lines[label]
+            xs = np.array([x.min(), x.max()])
+            ax.plot(xs, log10_const + slope * xs, "--", lw=0.8, color=color)
     setup_axis(ax, xlabel, ylabel, title)
 
 

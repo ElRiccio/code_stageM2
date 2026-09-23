@@ -57,15 +57,21 @@ def _empirical_order(log10_errors: torch.Tensor) -> torch.Tensor:
 
 
 def scalar_order_validation(
-    D: int, u0: float, n_iters: int, *, switch: float = 1e-8
+    D: int, u0: float, n_iters: int, *, switch: float = 1e-8, deflate: bool = True
 ) -> dict[str, torch.Tensor | float | int]:
     """Empirical order of the scalar orbit u_{k+1} = p_D(u_k) started at u0.
 
     prop:order predicts p_hat_k -> D+1, with the ratio e_{k+1}/(1-u_k)^(D+1)
     itself converging to the exact asymptotic constant kappa_D (both
     returned alongside the estimate, for comparison).
+
+    `deflate=False` computes the error by plain subtraction instead of
+    ns_iteration.log10_error_orbit's deflated form — see that function's
+    docstring. Useful only to demonstrate the float64 floor the deflated
+    form avoids; the deflated form (the default) is what actually validates
+    the theory past the point plain subtraction can resolve.
     """
-    log10_err = ns_iteration.log10_error_orbit(u0, D, n_iters, switch=switch)
+    log10_err = ns_iteration.log10_error_orbit(u0, D, n_iters, switch=switch, deflate=deflate)
     return {
         "log10_error": log10_err,
         "order_estimate": _empirical_order(log10_err),
@@ -73,14 +79,18 @@ def scalar_order_validation(
         "asymptotic_constant": ns_iteration.asymptotic_error_constant(D),
         "D": D,
         "u0": u0,
+        "deflate": deflate,
     }
 
 
 def degree_sweep_scalar(
-    D_values: list[int], u0: float, n_iters: int, *, switch: float = 1e-8
+    D_values: list[int], u0: float, n_iters: int, *, switch: float = 1e-8, deflate: bool = True
 ) -> dict[int, dict]:
     """scalar_order_validation for each D in D_values, at the same u0."""
-    return {D: scalar_order_validation(D, u0, n_iters, switch=switch) for D in D_values}
+    return {
+        D: scalar_order_validation(D, u0, n_iters, switch=switch, deflate=deflate)
+        for D in D_values
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -91,6 +101,7 @@ def degree_sweep_scalar(
 def matrix_order_validation(
     D: int,
     sigma_min: float,
+    m: int,
     n: int,
     n_iters: int,
     *,
@@ -98,14 +109,18 @@ def matrix_order_validation(
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> dict[str, torch.Tensor | float | int]:
-    """Empirical order of the matrix NS iteration on a random n x n matrix
+    """Empirical order of the matrix NS iteration on a random m x n matrix
     with spectral norm 1 and smallest nonzero singular value sigma_min.
+    m and n need not be equal; the construction and the NS iteration itself
+    (ns_iteration.ns_step_matrix, via X X^T) both work on rectangular
+    matrices without change.
 
-    The spectrum is prescribed exactly (linspace(1, sigma_min, n)) via
-    matrices.rand_prescribed_spectrum rather than by overwriting the tail of
-    a Gaussian matrix's spectrum (rand_rank_deficient): sigma_min here is
-    meant to be comparable to the rest of the spectrum, not near-zero, and
-    only the direct construction guarantees it ends up the true minimum.
+    The spectrum is prescribed exactly (linspace(1, sigma_min, min(m, n)))
+    via matrices.rand_prescribed_spectrum rather than by overwriting the
+    tail of a Gaussian matrix's spectrum (rand_rank_deficient): sigma_min
+    here is meant to be comparable to the rest of the spectrum, not
+    near-zero, and only the direct construction guarantees it ends up the
+    true minimum.
 
     By cor:matrix-order, ||X_k - Sgn(M)||_2 coincides with the scalar
     orbit's error at u0 = sigma_min for every k; `matrix_log10_error` and
@@ -117,9 +132,9 @@ def matrix_order_validation(
     pass dtype=torch.float32 to see the (much shallower) floor relevant to
     the mixed-precision/GPU timing experiments.
     """
-    sigma = torch.linspace(1.0, sigma_min, n, dtype=dtype)
+    sigma = torch.linspace(1.0, sigma_min, min(m, n), dtype=dtype)
     M = matrices.rand_prescribed_spectrum(
-        n, n, sigma, generator=generator, device=device, dtype=dtype
+        m, n, sigma, generator=generator, device=device, dtype=dtype
     )
     target = sign_map.sgn_svd(M)
     orbit = ns_iteration.ns_orbit_matrix(M, D, n_iters)
@@ -136,6 +151,9 @@ def matrix_order_validation(
         "scalar_log10_error": scalar_log10_err,
         "order_estimate": _empirical_order(matrix_log10_err),
         "predicted_order": D + 1,
+        # same exact constant as the scalar case: cor:matrix-order identifies
+        # the matrix error with the scalar orbit's error at u0 = sigma_min.
+        "asymptotic_constant": ns_iteration.asymptotic_error_constant(D),
         "D": D,
         "sigma_min": sigma_min,
         # log10 of the dtype's machine epsilon: the noise floor below which
@@ -148,6 +166,7 @@ def matrix_order_validation(
 def degree_sweep_matrix(
     D_values: list[int],
     sigma_min: float,
+    m: int,
     n: int,
     n_iters: int,
     *,
@@ -155,10 +174,10 @@ def degree_sweep_matrix(
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> dict[int, dict]:
-    """matrix_order_validation for each D in D_values, same sigma_min/n."""
+    """matrix_order_validation for each D in D_values, same sigma_min/m/n."""
     return {
         D: matrix_order_validation(
-            D, sigma_min, n, n_iters, generator=generator, dtype=dtype, device=device
+            D, sigma_min, m, n, n_iters, generator=generator, dtype=dtype, device=device
         )
         for D in D_values
     }

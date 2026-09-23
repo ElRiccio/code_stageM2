@@ -140,6 +140,36 @@ def plot_loglog_order(
     setup_axis(ax, xlabel, ylabel, title)
 
 
+def plot_metric_vs_parameter(
+    ax,
+    x_values: list[float],
+    y_values: list[float],
+    std: list[float] | None = None,
+    xlabel: str = "",
+    ylabel: str = "",
+    title: str = "",
+    xscale: str = "linear",
+    label: str = "",
+    color: str | None = None,
+) -> None:
+    """A scalar summary (+/- std, if given) against a swept parameter, e.g.
+    iterations-to-tolerance against rank deficiency or against the
+    smallest nonzero singular value. `xscale="log"` for a parameter (like
+    sigma_min) that is naturally swept over decades. Call this once per
+    series (e.g. once per degree D) on the same `ax` to overlay several;
+    pass `color` to keep a series' color consistent across two different
+    axes/parameters, since matplotlib's automatic cycling is local to each
+    ax.
+    """
+    x = np.asarray(x_values, dtype=float)
+    y = np.asarray(y_values, dtype=float)
+    yerr = np.asarray(std, dtype=float) if std is not None else None
+    ax.errorbar(x, y, yerr=yerr, fmt="o-", ms=4, lw=1.0, capsize=3, label=label or None, color=color)
+    if xscale != "linear":
+        ax.set_xscale(xscale)
+    setup_axis(ax, xlabel, ylabel, title, legend=bool(label))
+
+
 def save_figure(fig, outdir: str, name: str, dpi: int = 150, show: bool = False) -> None:
     """Tight-layout, save `fig` to outdir/name, and either display or close it."""
     fig.tight_layout()

@@ -47,8 +47,8 @@ def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
     beta > 0, so any positive scale that puts the spectrum of M / beta into
     (-1, 1) leaves the target unchanged. Computing it exactly (rather than by
     power iteration) is itself a decomposition-based step; a matrix-free
-    alternative belongs here as a second pre-scaling option once the timing
-    comparison (experiments.svd_comparison) needs one.
+    alternative belongs here as a second pre-scaling option once a timing
+    comparison needs one.
     """
     return torch.linalg.matrix_norm(M, ord=2)
 

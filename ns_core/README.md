@@ -1,7 +1,7 @@
 # ns_core
 
 The reusable numerical library. No module here saves a file or reads a
-command-line argument — that belongs to `experiments`.
+command-line argument.
 
 - `matrices.py` — random test matrices: Gaussian, symmetric, semi-orthogonal
   factors, a matrix with an exactly prescribed spectrum, and
@@ -41,3 +41,8 @@ command-line argument — that belongs to `experiments`.
   batching inside `ns_core`.
 - Docstrings describe the underlying formula directly rather than citing a
   thesis theorem/definition number.
+
+## Running
+
+Import from the repo root, e.g. `python -c "import ns_core"` or
+`from ns_core import matrices, ns_iteration, sign_map, cpwl`.

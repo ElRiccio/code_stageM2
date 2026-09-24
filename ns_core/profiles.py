@@ -5,7 +5,7 @@ degree-D truncation of (1 - t)^{-1/2}.
 
 These are the quantities Chapter 4's degree-D trade-off (convergence order
 vs. basin of attraction vs. arithmetic cost) is stated in terms of, and
-what experiments.degree_comparison sweeps over D to validate numerically.
+what a sweep over D validates numerically.
 """
 
 from __future__ import annotations

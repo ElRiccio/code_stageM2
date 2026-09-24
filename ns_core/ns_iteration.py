@@ -3,7 +3,7 @@ recursion it drives, read both as a scalar map on (-1, 1) and as an odd
 matrix polynomial acting on the singular values of a rescaled matrix.
 
 Coefficients are cached per degree D, since a handful of degrees are reused
-across many experiments (degree comparisons, repeated random trials) and
+across many runs (degree comparisons, repeated random trials) and
 recomputing the binomial expansion each call would be wasted work.
 """
 

@@ -105,7 +105,7 @@ def relative_frobenius_error(approx: torch.Tensor, exact: torch.Tensor) -> torch
 
     The relative-error quantity the reviewer asks be reported in the
     quantitative comparison table, alongside iteration/evaluation counts and
-    timing (see experiments.svd_comparison).
+    timing.
     """
     return frobenius_error(approx, exact) / torch.linalg.norm(exact)
 

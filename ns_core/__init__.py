@@ -18,5 +18,5 @@ cpwl        The catalogue of continuous piecewise-linear scalar profiles and
             their decomposition-free sign forms, on Sym^n and on R^{m x n}.
 
 None of these modules read command-line arguments or write files; that is
-left to the `experiments` package.
+left to the calling code.
 """

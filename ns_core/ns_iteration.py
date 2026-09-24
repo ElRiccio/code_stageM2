@@ -2,9 +2,14 @@
 Newton-Schulz recursion it drives, on the scalar line and on matrices.
 
 Scalar side: coefficients of p_D, its evaluation in the residual variable
-t = 1 - x^2, orbits u_{k+1} = p_D(u_k) and the asymptotic error constant.
+t = 1 - x^2, orbits u_{k+1} = p_D(u_k), the log10 error orbit and the
+asymptotic error constant.
 Matrix side: one step of the odd matrix polynomial and the orbit
 X_{k+1} = Phi(X_k) started from a rescaled M.
+
+Orbit functions take either the degree D of p_D or a coefficient tensor
+`coeffs` = a[0..D] of any odd polynomial sum_j a[j] x^(2j+1), such as the
+tensors from `profiles.quintic_coeffs`.
 """
 
 from __future__ import annotations
@@ -105,9 +110,30 @@ def bpoly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
     return x * t_poly_eval(x, D)
 
 
-def scalar_orbit(u0: torch.Tensor, D: int, n_iters: int) -> torch.Tensor:
-    """Orbit u_0, ..., u_K of u_{k+1} = p_D(u_k), as a tensor of shape
-    (n_iters + 1, *u0.shape).
+def odd_poly_eval(x: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
+    """sum_j a[j] x^(2j+1) by Horner's rule in x^2, for coefficients
+    a[0..D] given as a tensor; shape, dtype and device follow `x`.
+
+    Usage: odd_poly_eval(x, profiles.quintic_coeffs(r1, r2))
+    """
+    coeffs = coeffs.to(device=x.device, dtype=x.dtype)
+    x2 = x * x
+    out = torch.zeros_like(x)
+    for a in reversed(coeffs):
+        out = out * x2 + a
+    return x * out
+
+
+def scalar_orbit(
+    u0: torch.Tensor,
+    D: int | None,
+    n_iters: int,
+    *,
+    coeffs: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Orbit u_0, ..., u_K of u_{k+1} = p(u_k), as a tensor of shape
+    (n_iters + 1, *u0.shape). p is p_D, or the odd polynomial with
+    coefficients `coeffs` (D is then None).
 
     Usage: scalar_orbit(torch.tensor([0.1, 0.5]), D=2, n_iters=8)
     """
@@ -117,9 +143,31 @@ def scalar_orbit(u0: torch.Tensor, D: int, n_iters: int) -> torch.Tensor:
     out[0] = u0
     u = u0
     for k in range(n_iters):
-        u = bpoly_eval(u, D)
+        u = bpoly_eval(u, D) if coeffs is None else odd_poly_eval(u, coeffs)
         out[k + 1] = u
     return out
+
+
+def log10_error_orbit(
+    u0: torch.Tensor | float,
+    D: int | None,
+    n_iters: int,
+    *,
+    coeffs: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """log10 |1 - u_k| along the orbit of `scalar_orbit`, for u0 in (0, 1),
+    by direct subtraction. Values are floored at the machine epsilon of the
+    orbit's dtype, the level at which u_k rounds to 1. A float u0 gives a
+    float64 CPU orbit; a tensor u0 keeps its dtype and device.
+
+    Usage: log10_error_orbit(0.05, D=2, n_iters=10)
+    """
+    u0 = torch.as_tensor(u0, dtype=torch.float64) if not torch.is_tensor(u0) else u0
+    if not bool(((u0 > 0.0) & (u0 < 1.0)).all()):
+        raise ValueError("u0 must lie in the open interval (0, 1)")
+    u = scalar_orbit(u0, D, n_iters, coeffs=coeffs)
+    floor = torch.finfo(u.dtype).eps
+    return torch.log10(torch.clamp((1.0 - u).abs(), min=floor))
 
 
 # ----------------------------------------------------------------------------
@@ -144,24 +192,30 @@ def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
 
 def ns_orbit_matrix(
     M: torch.Tensor,
-    D: int,
+    D: int | None,
     n_iters: int,
     *,
+    coeffs: torch.Tensor | None = None,
     scale: torch.Tensor | float | None = None,
     tol: float | None = None,
 ) -> list[torch.Tensor]:
     """Iterates X_0, ..., X_K of X_{k+1} = Phi(X_k) with X_0 = M / scale,
-    where `scale` defaults to the spectral norm of M. The whole orbit shares
-    one scale, so every iterate is compared with the same msgn(M) target.
+    where `scale` defaults to the spectral norm of M. The polynomial is p_D,
+    or the one with coefficients `coeffs` (D is then None). The whole orbit
+    shares one scale, so every iterate is compared with the same msgn(M)
+    target.
 
     With `tol`, iteration stops once ||X_{k+1} - X_k||_F < tol and the last
     iterate is repeated, so the list always has n_iters + 1 entries.
 
-    Usage: orbit = ns_orbit_matrix(M, D=2, n_iters=10)
+    Usage: orbit = ns_orbit_matrix(M, D=2, n_iters=10)  # or coeffs=quintic_coeffs(r1, r2), D=None
     """
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")
-    coeffs = bpoly_coeffs(D, dtype=M.dtype, device=M.device)
+    if coeffs is None:
+        coeffs = bpoly_coeffs(D, dtype=M.dtype, device=M.device)
+    else:
+        coeffs = coeffs.to(device=M.device, dtype=M.dtype)
     if scale is None:
         scale = torch.linalg.matrix_norm(M, ord=2)
     scale = torch.as_tensor(scale, dtype=M.dtype, device=M.device)

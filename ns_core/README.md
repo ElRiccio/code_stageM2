@@ -10,8 +10,9 @@ iteration and the spectral operators built from it.
   operators (`op_svd`, `op_eig`), spectral coordinates, frame residuals, and
   the Frobenius, relative Frobenius and spectral error norms.
 - `ns_iteration.py` — the polynomials `bpoly_D` (coefficients, evaluation in
-  the residual variable, orbits, asymptotic error constant) and the matrix
-  recursion (`ns_step_matrix`, `ns_orbit_matrix`).
+  the residual variable, orbits, `log10_error_orbit`, asymptotic error
+  constant) and the matrix recursion (`ns_step_matrix`, `ns_orbit_matrix`).
+  The orbit functions take a degree `D` or a coefficient tensor `coeffs`.
 - `sign_map.py` — the matrix sign map: `sgn_svd` (exact), `make_sgn_ns` (the
   decomposition-free surrogate built from `ns_iteration`), both of type
   `msgn`, so any spectral operator in `cpwl.py` accepts either.
@@ -32,8 +33,8 @@ iteration and the spectral operators built from it.
 - Coefficients are computed in double precision and returned in the requested
   dtype.
 - Randomized functions take an explicit `torch.Generator`.
-- A quintic is passed to the matrix iteration through its coefficient tensor:
-  `ns_step_matrix(X, quintic_coeffs(r1, r2))`.
+- A quintic runs through the orbit functions by its coefficient tensor:
+  `ns_orbit_matrix(M, None, 10, coeffs=quintic_coeffs(r1, r2))`.
 
 ## Running
 

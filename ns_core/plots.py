@@ -1,7 +1,8 @@
-"""Matplotlib helpers for the convergence experiments. Each takes results
-keyed by the degree D (a dict D -> tensor over the iterations) and an
-optional axis, draws on it (a new one if omitted) and returns it. Degrees
-keep the same colour in every plot.
+"""Matplotlib helpers for the convergence experiments (results keyed by the
+degree D, a dict D -> tensor over the iterations) and for the SVD timing
+experiment (the result of `run_svd_timing`). Each takes an optional axis,
+draws on it (a new one if omitted) and returns it. Degrees keep the same
+colour in every plot.
 """
 
 from __future__ import annotations
@@ -92,6 +93,65 @@ def plot_error_map(errors: dict[int, torch.Tensor], ax=None, floor: float | None
     handles, _ = ax.get_legend_handles_labels()
     handles.append(Line2D([], [], color="k", ls="--", lw=1, label="$\\kappa_D\\, e_k^{D+1}$"))
     ax.legend(handles=handles, fontsize=8)
+    return ax
+
+
+def _time_curve(ax, x, cells, color, label, ls="-"):
+    """Median time against x (a list of cells' time stats) with the
+    interquartile band."""
+    med = [c["median"] for c in cells]
+    ax.loglog(x, med, ls, marker="o", ms=3, color=color, label=label)
+    ax.fill_between(x, [c["q25"] for c in cells], [c["q75"] for c in cells], color=color, alpha=0.2, lw=0)
+
+
+def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
+    """Median time against matrix size n on log-log axes for one device and
+    smin: one curve per D for the Newton-Schulz msgn and a dashed black curve
+    for the SVD, each with its interquartile band. `res` is the output of
+    `run_svd_timing`.
+
+    Usage: plot_time_vs_size(res, "cpu", 1e-2)
+    """
+    ax = _axis(ax)
+    cfg, cells = res["cfg"], res["cells"]
+    sizes = sorted(cfg.sizes)
+    colors = _colors(cfg.degrees)
+    for D in sorted(cfg.degrees):
+        _time_curve(ax, sizes, [cells[device, n, smin]["ns"][D]["time"] for n in sizes], colors[D], f"NS, D={D}")
+    _time_curve(ax, sizes, [cells[device, n, smin]["svd"]["time"] for n in sizes], "k", "SVD", ls="--")
+    ax.set_xlabel("size $n$")
+    ax.set_ylabel("time (s)")
+    ax.set_title(f"{device}, $\\sigma_{{\\min}}$ = {smin:g}")
+    ax.legend(fontsize=8)
+    return ax
+
+
+def plot_time_vs_smin(res: dict, device: str, ax=None):
+    """Median time against sigma_min on log-log axes for one device at size
+    cfg.n_fixed: one curve per D, annotated with the iteration count K_D at
+    every point, and a dashed black curve for the SVD. `res` is the output of
+    `run_svd_timing`.
+
+    Usage: plot_time_vs_smin(res, "cpu")
+    """
+    ax = _axis(ax)
+    cfg, cells = res["cfg"], res["cells"]
+    n = cfg.n_fixed
+    smins = sorted(cfg.smins)
+    colors = _colors(cfg.degrees)
+    for D in sorted(cfg.degrees):
+        _time_curve(ax, smins, [cells[device, n, s]["ns"][D]["time"] for s in smins], colors[D], f"NS, D={D}")
+        for s in smins:
+            ax.annotate(
+                str(cells[device, n, s]["ns"][D]["K"]),
+                (s, cells[device, n, s]["ns"][D]["time"]["median"]),
+                textcoords="offset points", xytext=(0, 5), ha="center", fontsize=7, color=colors[D],
+            )
+    _time_curve(ax, smins, [cells[device, n, s]["svd"]["time"] for s in smins], "k", "SVD", ls="--")
+    ax.set_xlabel("$\\sigma_{\\min}$")
+    ax.set_ylabel("time (s)")
+    ax.set_title(f"{device}, $n$ = {n} (labels: $K_D$)")
+    ax.legend(fontsize=8)
     return ax
 
 

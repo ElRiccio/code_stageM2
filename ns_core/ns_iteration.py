@@ -190,6 +190,29 @@ def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
     return out
 
 
+def ns_step_gram(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
+    """One step of the odd matrix polynomial Phi(X) = sum_j a[j] (X X^T)^j X,
+    evaluated as X q(X^T X) for m >= n and q(X X^T) X for m < n, with
+    q(G) = sum_j a[j] G^j summed by Horner's rule. The Gram matrix is
+    min(m, n) x min(m, n) and a step costs one Gram product, D - 1 products
+    of the Gram size and one product with X. `coeffs` holds a[0..D] on X's
+    device.
+
+    Usage: ns_step_gram(X, bpoly_coeffs(2, dtype=X.dtype, device=X.device))
+    """
+    D = coeffs.numel() - 1
+    if D == 0:
+        return coeffs[0] * X
+    tall = X.shape[-2] >= X.shape[-1]
+    G = X.mH @ X if tall else X @ X.mH
+    Q = coeffs[D] * G
+    Q.diagonal(dim1=-2, dim2=-1).add_(coeffs[D - 1])  # Q = a[D] G + a[D-1] I
+    for j in range(D - 2, -1, -1):
+        Q = Q @ G
+        Q.diagonal(dim1=-2, dim2=-1).add_(coeffs[j])  # Q = Q G + a[j] I
+    return X @ Q if tall else Q @ X
+
+
 def ns_orbit_matrix(
     M: torch.Tensor,
     D: int | None,

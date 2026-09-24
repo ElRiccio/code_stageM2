@@ -27,14 +27,15 @@ def sgn_exact(t: torch.Tensor) -> torch.Tensor:
     return torch.sign(t)
 
 
-def sgn_svd(M: torch.Tensor, tol: float | None = None) -> torch.Tensor:
+def sgn_svd(M: torch.Tensor, tol: float | None = None, driver: str | None = None) -> torch.Tensor:
     """Exact msgn(M) = U diag(sgn(sigma)) V^T from a thin SVD. Singular
     values at or below `tol` count as zero; `tol` defaults to
-    `metrics.numerical_rank_tol(M, sigma)`.
+    `metrics.numerical_rank_tol(M, sigma)`. `driver` is the CUDA SVD driver
+    (see `metrics.reference_svd`).
 
     Usage: N = sgn_svd(M)
     """
-    U, sigma, V = metrics.reference_svd(M)
+    U, sigma, V = metrics.reference_svd(M, driver=driver)
     if tol is None:
         tol = metrics.numerical_rank_tol(M, sigma)
     signs = (sigma > tol).to(M.dtype)
@@ -48,6 +49,48 @@ def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
     Usage: beta = spectral_norm_exact(M)
     """
     return torch.linalg.matrix_norm(M, ord=2)
+
+
+def spectral_norm_power(
+    M: torch.Tensor, iters: int, *, generator: torch.Generator
+) -> torch.Tensor:
+    """Estimate of the largest singular value of M by `iters` power steps on
+    M^T M from a random start. The estimate never exceeds the true value, so
+    callers multiply it by a margin. Uses matrix-vector products only and no
+    host synchronization.
+
+    Usage: beta = spectral_norm_power(M, 10, generator=g)
+    """
+    v = torch.randn(M.shape[-1], generator=generator, device=M.device, dtype=M.dtype)
+    v = v / torch.linalg.norm(v)
+    for _ in range(iters):
+        v = M.mH @ (M @ v)
+        v = v / torch.linalg.norm(v)
+    return torch.linalg.norm(M @ v)
+
+
+def sgn_ns_fixed(
+    M: torch.Tensor,
+    D: int,
+    K: int,
+    *,
+    power_iters: int,
+    margin: float,
+    generator: torch.Generator,
+) -> torch.Tensor:
+    """Decomposition-free msgn(M): K steps of degree D (min-side Gram form,
+    `ns_iteration.ns_step_gram`) on M / (margin * power estimate of sigma_max).
+    There is no residual check, no zero-scale test and no stored orbit, so
+    nothing forces a device synchronization; a zero matrix is not handled.
+
+    Usage: X = sgn_ns_fixed(M, D=2, K=8, power_iters=10, margin=1.1, generator=g)
+    """
+    s = margin * spectral_norm_power(M, power_iters, generator=generator)
+    X = M / s
+    coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
+    for _ in range(K):
+        X = ns_iteration.ns_step_gram(X, coeffs)
+    return X
 
 
 def make_sgn_ns(

@@ -17,12 +17,16 @@ import torch
 # ----------------------------------------------------------------------------
 
 
-def reference_svd(M: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def reference_svd(
+    M: torch.Tensor, driver: str | None = None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Thin SVD (U, sigma, V) of M with sigma descending, via torch.linalg.svd.
+    `driver` picks the cuSOLVER method ("gesvd", "gesvdj", "gesvda") and is
+    only accepted for CUDA inputs; None leaves the choice to torch.
 
     Usage: U, sigma, V = reference_svd(M)
     """
-    U, sigma, Vh = torch.linalg.svd(M, full_matrices=False)
+    U, sigma, Vh = torch.linalg.svd(M, full_matrices=False, driver=driver)
     return U, sigma, Vh.mH
 
 

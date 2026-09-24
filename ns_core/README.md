@@ -11,7 +11,9 @@ iteration and the spectral operators built from it.
   the Frobenius, relative Frobenius and spectral error norms.
 - `ns_iteration.py` — the polynomials `bpoly_D` (coefficients, evaluation in
   the residual variable, orbits, `log10_error_orbit`, asymptotic error
-  constant) and the matrix recursion (`ns_step_matrix`, `ns_orbit_matrix`).
+  constant) and the matrix recursion (`ns_step_matrix`, `ns_orbit_matrix`,
+  and `ns_step_gram`, the same step with the Gram matrix on the smaller side
+  and Horner's rule).
   The orbit functions take a degree `D` or a coefficient tensor `coeffs`.
 - `sign_map.py` — the matrix sign map: `sgn_svd` (exact), `make_sgn_ns` (the
   decomposition-free surrogate built from `ns_iteration`), both of type
@@ -25,8 +27,10 @@ iteration and the spectral operators built from it.
   orbit of the iteration in a chosen dtype (with an optional stopping
   tolerance), and its errors, numerical ranks and first hitting index.
 - `plots.py` — matplotlib helpers for those experiments (error curves, the
-  log-log map e_{k+1} against e_k, rank of X_k); each takes an optional
-  axis.
+  log-log map e_{k+1} against e_k, rank of X_k) and for the timing experiment
+  (time against n, time against sigma_min); each takes an optional axis.
+- `timing.py` — `time_call`: warm-up, repeated calls, median and quartiles,
+  CUDA synchronization around every timed call.
 - `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on
   R^{m x n} (singular-value frame) and Sym^n (eigenvalue frame, built from
   the matrix absolute value).

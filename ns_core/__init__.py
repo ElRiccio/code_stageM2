@@ -13,6 +13,7 @@ sign_map      The matrix sign map msgn: exact (SVD) and the decomposition-free
               surrogate built from ns_iteration.
 profiles      The truncated series B_D, the basin radius R_D, the iteration
               count K_D, and the admissible quintics given by (r1, r2).
+timing        Wall-clock timing of a callable with warm-up and CUDA sync.
 cpwl          Continuous piecewise-linear scalar profiles and their sign
               forms on R^{m x n} and Sym^n.
 """

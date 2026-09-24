@@ -22,10 +22,10 @@ iteration and the spectral operators built from it.
   convergence and error constant.
 - `orbit_tools.py` — helpers for the convergence experiments: the test
   instance with a log-spaced prescribed spectrum and its exact `msgn`, the
-  orbit of the iteration in a chosen dtype, and its errors, singular values
-  and first hitting index.
+  orbit of the iteration in a chosen dtype (with an optional stopping
+  tolerance), and its errors, numerical ranks and first hitting index.
 - `plots.py` — matplotlib helpers for those experiments (error curves, the
-  log-log map e_{k+1} against e_k, rank preservation); each takes an optional
+  log-log map e_{k+1} against e_k, rank of X_k); each takes an optional
   axis.
 - `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on
   R^{m x n} (singular-value frame) and Sym^n (eigenvalue frame, built from

@@ -72,16 +72,32 @@ def make_instance(
     return M, sign_map.sgn_svd(M)
 
 
+def default_tol(dtype: torch.dtype) -> float:
+    """Default stopping tolerance on the step ||X_{k+1} - X_k||_F: the square
+    root of the machine epsilon of `dtype`. With convergence of order two or
+    more, the iterate after such a step is already at rounding level, so
+    stopping there keeps the null space from amplifying rounding noise.
+
+    Usage: tol = default_tol(torch.float64)
+    """
+    return math.sqrt(torch.finfo(dtype).eps)
+
+
 def run_orbit(
-    M: torch.Tensor, D: int, k_max: int, dtype: torch.dtype
+    M: torch.Tensor,
+    D: int,
+    k_max: int,
+    dtype: torch.dtype,
+    tol: float | None = None,
 ) -> list[torch.Tensor]:
     """Iterates X_0, ..., X_{k_max} of degree D started from M (whose largest
     singular value is 1, so no rescaling), run in `dtype` and returned in
-    float64.
+    float64. With `tol`, iteration stops once ||X_{k+1} - X_k||_F < tol and
+    the last iterate is repeated.
 
-    Usage: orbit = run_orbit(M, D=2, k_max=20, dtype=torch.float32)
+    Usage: orbit = run_orbit(M, D=2, k_max=20, dtype=torch.float32, tol=1e-4)
     """
-    orbit = ns_iteration.ns_orbit_matrix(M.to(dtype), D, k_max, scale=1.0)
+    orbit = ns_iteration.ns_orbit_matrix(M.to(dtype), D, k_max, scale=1.0, tol=tol)
     return [X.to(torch.float64) for X in orbit]
 
 
@@ -93,12 +109,14 @@ def orbit_errors(orbit: list[torch.Tensor], N: torch.Tensor) -> torch.Tensor:
     return torch.stack([metrics.spectral_error(X, N) for X in orbit])
 
 
-def orbit_singular_values(orbit: list[torch.Tensor]) -> torch.Tensor:
-    """Singular values of every iterate, descending, shape (K + 1, min(m, n)).
+def orbit_ranks(orbit: list[torch.Tensor], tol: float) -> torch.Tensor:
+    """Numerical rank of every iterate, shape (K + 1,): the number of singular
+    values above tol * sigma_max.
 
-    Usage: sv = orbit_singular_values(orbit)
+    Usage: ranks = orbit_ranks(orbit, tol=1e-8)
     """
-    return torch.stack([torch.linalg.svdvals(X) for X in orbit])
+    sv = torch.stack([torch.linalg.svdvals(X) for X in orbit])
+    return (sv > tol * sv[:, :1]).sum(dim=1)
 
 
 def first_hit(err: torch.Tensor, eps: float) -> int | None:
@@ -108,3 +126,20 @@ def first_hit(err: torch.Tensor, eps: float) -> int | None:
     """
     hits = (err <= eps).nonzero()
     return int(hits[0]) if hits.numel() else None
+
+
+def report_iterations(
+    iterations: dict[int, int | None], predicted: dict[int, int] | None = None
+) -> None:
+    """Prints, for each D, the first iteration at which the error is at or
+    below eps (as returned in res["iterations"]), with the predicted K_D
+    alongside if given.
+
+    Usage: report_iterations(res["iterations"], res.get("predicted"))
+    """
+    for D in sorted(iterations):
+        k = iterations[D]
+        line = f"D={D}: " + ("not reached within k_max" if k is None else f"{k} iterations")
+        if predicted is not None and D in predicted:
+            line += f"  (predicted K_D = {predicted[D]})"
+        print(line)

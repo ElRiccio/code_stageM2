@@ -33,14 +33,16 @@ class ConditioningConfig:
 
 def run_conditioning(cfg: ConditioningConfig) -> dict[str, dict[int, object]]:
     """Runs every degree in cfg.degrees on one matrix; returns
-    {"error": {D: e_0..e_kmax}, "predicted": {D: K_D(smin, eps)}}.
+    {"error": {D: e_0..e_kmax}, "predicted": {D: K_D(smin, eps)},
+    "iterations": {D: first k with error <= eps, or None}}.
 
     Usage: res = run_conditioning(ConditioningConfig())
     """
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
-    error, predicted = {}, {}
+    error, predicted, iterations = {}, {}, {}
     for D in cfg.degrees:
         orbit = orbit_tools.run_orbit(M, D, cfg.k_max, cfg.dtype)
         error[D] = orbit_tools.orbit_errors(orbit, N)
         predicted[D] = profiles.iteration_count_bound(D, 1.0 - cfg.smin**2, cfg.eps)
-    return {"error": error, "predicted": predicted}
+        iterations[D] = orbit_tools.first_hit(error[D], cfg.eps)
+    return {"error": error, "predicted": predicted, "iterations": iterations}

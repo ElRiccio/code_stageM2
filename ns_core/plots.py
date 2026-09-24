@@ -95,29 +95,20 @@ def plot_error_map(errors: dict[int, torch.Tensor], ax=None, floor: float | None
     return ax
 
 
-def plot_rank_preservation(
-    trailing: dict[int, torch.Tensor],
-    smallest: dict[int, torch.Tensor],
-    ax=None,
-):
-    """Along the orbit, the largest trailing singular value (solid; it should
-    stay at rounding level) and the smallest nonzero one sigma_r (dashed; it
-    should rise to 1), one colour per D.
+def plot_ranks(ranks: dict[int, torch.Tensor], r: int | None = None, ax=None):
+    """Numerical rank of X_k against iteration k, one curve per D; with `r`,
+    draws the rank of M as a dashed horizontal line.
 
-    Usage: plot_rank_preservation(res["trailing"], res["smallest"])
+    Usage: plot_ranks(res["rank"], r=orbit_tools.resolve_rank(m, n, rank))
     """
     ax = _axis(ax)
-    colors = _colors(trailing)
-    for D in sorted(trailing):
-        k = _np(torch.arange(len(trailing[D])))
-        ax.semilogy(k, _np(trailing[D]), "-", color=colors[D])
-        ax.semilogy(k, _np(smallest[D]), "--", color=colors[D])
-    handles = [Line2D([], [], color=colors[D], label=f"D={D}") for D in sorted(trailing)]
-    handles += [
-        Line2D([], [], color="k", ls="-", label="largest trailing $\\sigma_i(X_k)$, $i>r$"),
-        Line2D([], [], color="k", ls="--", label="$\\sigma_r(X_k)$"),
-    ]
+    colors = _colors(ranks)
+    for D in sorted(ranks):
+        k = _np(torch.arange(len(ranks[D])))
+        ax.plot(k, _np(ranks[D]), "-o", ms=3, color=colors[D], label=f"D={D}")
+    if r is not None:
+        ax.axhline(r, color="gray", ls="--", label=f"rank of $M$ = {r}")
     ax.set_xlabel("iteration $k$")
-    ax.set_ylabel("singular value")
-    ax.legend(handles=handles, fontsize=8)
+    ax.set_ylabel("numerical rank of $X_k$")
+    ax.legend(fontsize=8)
     return ax

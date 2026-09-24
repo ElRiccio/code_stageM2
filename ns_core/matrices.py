@@ -1,15 +1,11 @@
-"""Random test matrices: plain generators and rank/conditioning-controlled ones.
+"""Random test matrices: Gaussian and symmetric draws, semi-orthogonal
+factors, matrices with a prescribed spectrum, and rank-deficient or
+ill-conditioned matrices.
 
-Every generator here is a reference construction: rank-deficient and
-ill-conditioned matrices are built by taking an exact SVD and overwriting
-singular values directly. That is legitimate for building a test instance,
-but it is a different computation from the decomposition-free algorithms
-these matrices are used to test (see ns_core.sign_map, ns_core.cpwl), and
-the two should never be confused with one another in an experiment.
-
-Every function takes an explicit torch.Generator for reproducibility rather
-than relying on global RNG state, and explicit device/dtype kwargs with
-CPU/float32 defaults.
+Prescribed-spectrum and rank-deficient matrices are assembled from an
+orthogonal or SVD frame with the singular values set directly. Every
+function takes an explicit torch.Generator and explicit device/dtype
+keywords (defaults: CPU, float32); the generator lives on `device`.
 """
 
 from __future__ import annotations
@@ -25,7 +21,10 @@ def rand_gaussian(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Plain m x n Gaussian matrix. Almost surely full rank, spectrum unprescribed."""
+    """m x n matrix with i.i.d. standard normal entries (full rank almost surely).
+
+    Usage: M = rand_gaussian(64, 32, generator=g, dtype=torch.float64)
+    """
     return torch.randn(m, n, generator=generator, device=device, dtype=dtype)
 
 
@@ -37,10 +36,11 @@ def rand_orthogonal_factor(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Semi-orthogonal q x k factor (q >= k) from the QR of a Gaussian block.
+    """Semi-orthogonal q x k factor (q >= k) from the QR of a Gaussian block,
+    with the diagonal of R made nonnegative so equal generator states give
+    equal factors.
 
-    The QR sign ambiguity is pinned (diagonal of R made nonnegative) so that
-    runs with the same generator state reproduce exactly.
+    Usage: Q = rand_orthogonal_factor(64, 32, generator=g)
     """
     if k > q:
         raise ValueError("need q >= k for a semi-orthogonal q x k factor")
@@ -59,11 +59,10 @@ def rand_symmetric(
     dtype: torch.dtype = torch.float32,
     normalize: bool = True,
 ) -> torch.Tensor:
-    """Symmetric n x n test matrix, 0.5 * (A + A^T) for Gaussian A.
+    """Symmetric n x n matrix 0.5 * (A + A^T) for Gaussian A; with
+    `normalize` it is rescaled to spectral norm 1.
 
-    If `normalize`, rescaled so that its exact spectral norm is 1, which is
-    the convention the rest of the library assumes (every knot/threshold
-    passed to a profile is then read directly against the spectrum).
+    Usage: S = rand_symmetric(64, generator=g)
     """
     A = rand_gaussian(n, n, generator=generator, device=device, dtype=dtype)
     S = 0.5 * (A + A.T)
@@ -83,19 +82,10 @@ def rand_prescribed_spectrum(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """U diag(sigma) V^T for random semi-orthogonal U (m x r), V (n x r),
-    r = len(sigma): a matrix whose singular values are exactly `sigma`,
-    in any order or spacing.
+    """U diag(sigma) V^T for random semi-orthogonal U (m x r) and V (n x r),
+    r = len(sigma): a matrix whose singular values are exactly `sigma`.
 
-    This is the direct construction, as opposed to `rand_rank_deficient`'s
-    overwrite-the-tail-of-a-Gaussian approach: overwriting only guarantees
-    the overwritten entries are the smallest of the final spectrum when the
-    overwrite value is smaller than every singular value left untouched, so
-    it is the wrong tool whenever the smallest singular value needs to be
-    controlled to a value comparable to the rest of the spectrum (e.g. 0.6,
-    as opposed to the near-zero values `rand_rank_deficient` is meant for).
-    Use this whenever the whole spectrum, not just its tail, needs to be
-    prescribed exactly.
+    Usage: M = rand_prescribed_spectrum(64, 32, torch.linspace(1, 0.1, 32), generator=g)
     """
     r = sigma.numel()
     if r > min(m, n):
@@ -118,17 +108,11 @@ def rand_rank_deficient(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Gaussian matrix with its smallest singular values overwritten.
+    """Gaussian matrix whose `n_zero` smallest singular values are set to 0
+    and the next `n_small` smallest to `s_small`. With `normalize`, the
+    singular values are first scaled so the largest is 1.
 
-    Built as: draw a Gaussian matrix, take its exact SVD, set the `n_small`
-    smallest nonzero singular values to `s_small` and the `n_zero` smallest
-    to exactly 0, then reassemble. This is the rank-deficiency /
-    conditioning knob the reviewer asks be swept systematically (several
-    ranks, several values of the smallest nonzero singular value) rather
-    than fixed at "one singular value set to zero".
-
-    Requires n_zero + n_small <= min(m, n). If `normalize`, the singular
-    values are scaled first so the largest is 1, before the overwrite.
+    Usage: M = rand_rank_deficient(64, 32, generator=g, n_zero=4, n_small=2, s_small=1e-3)
     """
     if n_zero < 0 or n_small < 0:
         raise ValueError("n_zero and n_small must be nonnegative")

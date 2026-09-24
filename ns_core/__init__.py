@@ -1,22 +1,18 @@
-"""ns_core: reusable PyTorch library for the matrix sign / Newton-Schulz thesis.
+"""ns_core: PyTorch library for the matrix sign map and the generalized
+Newton-Schulz iteration.
 
 Modules
 -------
-matrices    Random test matrices: Gaussian, orthogonal factors, rank-deficient
-            and conditioning-controlled constructions.
-metrics     Error norms, reference SVD/eigendecomposition, reference spectral
-            operators (the decomposition-based ground truth), spectral
-            coordinates and frame residuals.
-ns_iteration  The degree-D polynomial family and the Newton-Schulz recursion
-            it drives, on both the scalar and the matrix reading.
-sign_map    The matrix sign map itself: the exact (SVD-based) reference and
-            the decomposition-free surrogate built from ns_iteration.
-profiles    Admissible-profile constants derived from the truncated series
-            B_D: the basin-of-attraction radius and the iteration-count
-            bound.
-cpwl        The catalogue of continuous piecewise-linear scalar profiles and
-            their decomposition-free sign forms, on Sym^n and on R^{m x n}.
-
-None of these modules read command-line arguments or write files; that is
-left to the calling code.
+matrices      Random test matrices: Gaussian, symmetric, semi-orthogonal
+              factors, prescribed spectrum, rank-deficient and ill-conditioned.
+metrics       Reference SVD / eigendecomposition, reference spectral operators,
+              spectral coordinates, frame residuals and error norms.
+ns_iteration  The polynomials bpoly_D and the Newton-Schulz recursion they
+              drive, on scalars and on matrices.
+sign_map      The matrix sign map msgn: exact (SVD) and the decomposition-free
+              surrogate built from ns_iteration.
+profiles      The truncated series B_D, the basin radius R_D, the iteration
+              count K_D, and the admissible quintics given by (r1, r2).
+cpwl          Continuous piecewise-linear scalar profiles and their sign
+              forms on R^{m x n} and Sym^n.
 """

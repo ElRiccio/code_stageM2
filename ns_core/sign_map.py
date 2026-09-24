@@ -1,11 +1,11 @@
-"""The matrix sign map: the exact reference and the decomposition-free
-surrogate built by running ns_core.ns_iteration on a pre-scaled matrix.
+"""The matrix sign map msgn: the exact SVD-based version and the
+decomposition-free surrogate obtained by running `ns_iteration` on a
+rescaled matrix.
 
-Every decomposition-free spectral operator in ns_core.cpwl is expressed in
-terms of a `Sgn` callable, so that swapping in the exact reference
-(sgn_svd) or a truncated surrogate (make_sgn_ns with different D, n_iters)
-is a one-line change at the call site, never a change to the operator's own
-formula.
+`msgn` is the type of a one-argument callable Tensor -> Tensor computing a
+matrix sign; `sgn_svd(M)` and `make_sgn_ns(D, n_iters)` both produce
+callables of this type, so either can be passed wherever a matrix sign map
+is expected.
 """
 
 from __future__ import annotations
@@ -16,22 +16,23 @@ import torch
 
 from ns_core import metrics, ns_iteration
 
-Sgn = Callable[[torch.Tensor], torch.Tensor]
+msgn = Callable[[torch.Tensor], torch.Tensor]
 
 
 def sgn_exact(t: torch.Tensor) -> torch.Tensor:
-    """Scalar sign, convention sgn(0) = 0."""
+    """Scalar sign with sgn(0) = 0, applied elementwise.
+
+    Usage: sgn_exact(torch.tensor([-2.0, 0.0, 3.0]))
+    """
     return torch.sign(t)
 
 
 def sgn_svd(M: torch.Tensor, tol: float | None = None) -> torch.Tensor:
-    """Exact matrix sign U diag(sign(sigma)) V^T, thresholded at `tol`
-    (defaults to ns_core.metrics.numerical_rank_tol(M, sigma)).
+    """Exact msgn(M) = U diag(sgn(sigma)) V^T from a thin SVD. Singular
+    values at or below `tol` count as zero; `tol` defaults to
+    `metrics.numerical_rank_tol(M, sigma)`.
 
-    This is the reference every decomposition-free evaluation in ns_core.cpwl
-    is checked against; it is deliberately not the fast path (it costs a
-    full SVD), and should never be called from inside a "decomposition-free"
-    code path.
+    Usage: N = sgn_svd(M)
     """
     U, sigma, V = metrics.reference_svd(M)
     if tol is None:
@@ -41,14 +42,10 @@ def sgn_svd(M: torch.Tensor, tol: float | None = None) -> torch.Tensor:
 
 
 def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
-    """Exact largest singular value of M, via torch.linalg.
+    """Largest singular value of M via torch.linalg, the default rescaling
+    constant: msgn(M / beta) = msgn(M) for every beta > 0.
 
-    The pre-scaling norm used by default: Sgn(M / beta) = Sgn(M) for any
-    beta > 0, so any positive scale that puts the spectrum of M / beta into
-    (-1, 1) leaves the target unchanged. Computing it exactly (rather than by
-    power iteration) is itself a decomposition-based step; a matrix-free
-    alternative belongs here as a second pre-scaling option once a timing
-    comparison needs one.
+    Usage: beta = spectral_norm_exact(M)
     """
     return torch.linalg.matrix_norm(M, ord=2)
 
@@ -59,23 +56,22 @@ def make_sgn_ns(
     *,
     scale: torch.Tensor | float | None = None,
     tol: float | None = None,
-) -> Sgn:
-    """Sgn surrogate as a one-argument callable: `n_iters` NS steps of degree
-    D, on M pre-scaled to unit spectral norm (or to `scale`, if given).
+) -> msgn:
+    """The surrogate msgn: a callable running `n_iters` steps of degree D on
+    M / scale, with `scale` defaulting to the spectral norm of M. The scale
+    is recomputed at every call, so the callable applies to any argument
+    (for instance alpha * N - M). With `tol`, iteration stops once the step
+    ||X_{k+1} - X_k||_F falls below it.
 
-    Every call pre-scales its own argument. This matters wherever a Sgn
-    callable is invoked on a matrix shifted away from M (e.g. the clip and
-    soft-threshold sign forms in ns_core.cpwl evaluate Sgn on `alpha * N -
-    M`, not on M itself), so the surrogate must not assume its argument is
-    already unit-norm.
+    Usage: msgn_ns = make_sgn_ns(D=2, n_iters=8); X = msgn_ns(M)
     """
 
-    def Sgn(M: torch.Tensor) -> torch.Tensor:
+    def msgn(M: torch.Tensor) -> torch.Tensor:
         s = spectral_norm_exact(M) if scale is None else scale
         s = torch.as_tensor(s, dtype=M.dtype, device=M.device)
         if s <= 0:
             return torch.zeros_like(M)
-        coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype).to(device=M.device)
+        coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
         X = M / s
         for _ in range(n_iters):
             X_prev = X
@@ -84,4 +80,4 @@ def make_sgn_ns(
                 break
         return X
 
-    return Sgn
+    return msgn

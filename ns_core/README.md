@@ -1,48 +1,42 @@
 # ns_core
 
-The reusable numerical library. No module here saves a file or reads a
-command-line argument.
+PyTorch library for the matrix sign map, the generalized Newton–Schulz
+iteration and the spectral operators built from it.
 
 - `matrices.py` — random test matrices: Gaussian, symmetric, semi-orthogonal
-  factors, a matrix with an exactly prescribed spectrum, and
-  rank-deficient/ill-conditioned constructions (built by an explicit SVD
-  overwrite, kept distinct from the decomposition-free algorithms these
-  matrices are used to test).
-- `metrics.py` — reference SVD/eigendecomposition, reference spectral
-  operators (`op_svd`, `op_eig`, the decomposition-based ground truth),
-  spectral coordinates and frame residuals, and the error norms
-  (Frobenius, relative Frobenius, spectral) used throughout.
-- `ns_iteration.py` — the degree-(2D+1) polynomial family p_D, both scalar
-  (orbits, the deflated error orbit) and matrix (the NS recursion via the
-  odd matrix polynomial Phi).
-- `sign_map.py` — the matrix sign map: `sgn_svd` (exact reference) and
-  `make_sgn_ns` (the decomposition-free surrogate built from
-  `ns_iteration`), unified behind a single `Sgn` callable type so any
-  spectral operator in `cpwl.py` can be evaluated with either.
-- `profiles.py` — admissible-profile constants (mu_D, rho_D, lambda_D),
-  the burn-in bound, and the basin-of-attraction radius / iteration-count
-  bound built from the truncated series B_D.
-- `cpwl.py` — the six piecewise-linear scalar profiles and their
-  decomposition-free sign forms, on both R^{m x n} (via the singular-value
-  frame) and Sym^n (via the eigenvalue frame, built from the matrix
-  absolute value).
+  factors, a matrix with an exactly prescribed spectrum, and rank-deficient /
+  ill-conditioned matrices.
+- `metrics.py` — reference SVD and eigendecomposition, reference spectral
+  operators (`op_svd`, `op_eig`), spectral coordinates, frame residuals, and
+  the Frobenius, relative Frobenius and spectral error norms.
+- `ns_iteration.py` — the polynomials `bpoly_D` (coefficients, evaluation in
+  the residual variable, orbits, asymptotic error constant) and the matrix
+  recursion (`ns_step_matrix`, `ns_orbit_matrix`).
+- `sign_map.py` — the matrix sign map: `sgn_svd` (exact), `make_sgn_ns` (the
+  decomposition-free surrogate built from `ns_iteration`), both of type
+  `msgn`, so any spectral operator in `cpwl.py` accepts either.
+- `profiles.py` — the truncated series `B_D`, the basin radius `R_D`, the
+  iteration count `K_D`, and the admissible quintics `x(1 + r1 t + r2 t^2)`:
+  coefficients, `bmax`, slopes at 0 and 1, extremal slope, order of
+  convergence and error constant.
+- `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on
+  R^{m x n} (singular-value frame) and Sym^n (eigenvalue frame, built from
+  the matrix absolute value).
 
 ## Conventions
 
-- Every matrix-generating or randomized function takes an explicit
-  `torch.Generator`; nothing relies on global RNG state.
-- `device`/`dtype` are explicit keyword arguments, defaulting to CPU /
-  float32. Coefficient computations that are reused across many steps
-  (`bpoly_coeffs`, `deflation_coeffs`) are done in float64 regardless of the
-  iteration's own dtype, since their own rounding error should not be the
-  bottleneck.
-- Functions operate on a single matrix; repeating/averaging over several
-  random matrices is done by looping at the experiment level, not by
-  batching inside `ns_core`.
-- Docstrings describe the underlying formula directly rather than citing a
-  thesis theorem/definition number.
+- Functions that take a tensor create every internal tensor on its device and
+  dtype. Functions without a tensor input (`bpoly_coeffs`,
+  `truncated_series_coeffs`, the generators in `matrices.py`) take `device`
+  and `dtype` keywords, defaulting to CPU / float64 or CPU / float32.
+- Coefficients are computed in double precision and returned in the requested
+  dtype.
+- Randomized functions take an explicit `torch.Generator`.
+- A quintic is passed to the matrix iteration through its coefficient tensor:
+  `ns_step_matrix(X, quintic_coeffs(r1, r2))`.
 
 ## Running
 
-Import from the repo root, e.g. `python -c "import ns_core"` or
-`from ns_core import matrices, ns_iteration, sign_map, cpwl`.
+From the repo root: `python -c "import ns_core"`, or
+`from ns_core import matrices, ns_iteration, sign_map, profiles, cpwl`.
+Each public function's docstring ends with a one-line usage.

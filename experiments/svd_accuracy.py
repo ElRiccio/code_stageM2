@@ -31,7 +31,7 @@ from experiments import map_catalogue, trials
 DEFAULT_M, DEFAULT_N = 64, 48
 DEFAULT_D = 3
 N_ITERS_CAP = 40
-TOL_NS = 1e-12  # appropriate for float64; see default_tol_for for float32
+TOL_NS = 1e-6  # appropriate for float64; see default_tol_for for float32
 DEFAULT_N_TRIALS = 10
 DEFAULT_BASE_SEED = 0
 

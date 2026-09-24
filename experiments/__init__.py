@@ -8,5 +8,5 @@ convergence     Error decay for several degrees D and its observed rate.
 conditioning    Error decay and iteration count against the predicted K_D.
 rank_deficiency Rank and zero singular values along the orbit; the limit.
 svd_timing      Time of the Newton-Schulz msgn against the SVD-based msgn over
-                size, sigma_min, device and D, with the paired error.
+                size, sigma_min, device and D, over random matrices, with the paired error.
 """

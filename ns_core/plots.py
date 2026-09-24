@@ -96,18 +96,15 @@ def plot_error_map(errors: dict[int, torch.Tensor], ax=None, floor: float | None
     return ax
 
 
-def _time_curve(ax, x, cells, color, label, ls="-"):
-    """Median time against x (a list of cells' time stats) with the
-    interquartile band."""
-    med = [c["median"] for c in cells]
-    ax.loglog(x, med, ls, marker="o", ms=3, color=color, label=label)
-    ax.fill_between(x, [c["q25"] for c in cells], [c["q75"] for c in cells], color=color, alpha=0.2, lw=0)
+def _time_curve(ax, x, stats, color, label, ls="-"):
+    """Median time against x, from a list of time stats."""
+    ax.loglog(x, [c["median"] for c in stats], ls, marker="o", ms=3, color=color, label=label)
 
 
 def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
     """Median time against matrix size n on log-log axes for one device and
     smin: one curve per D for the Newton-Schulz msgn and a dashed black curve
-    for the SVD, each with its interquartile band. `res` is the output of
+    for the SVD (medians over the random matrices). `res` is the output of
     `run_svd_timing`.
 
     Usage: plot_time_vs_size(res, "cpu", 1e-2)

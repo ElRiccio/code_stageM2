@@ -29,8 +29,8 @@ iteration and the spectral operators built from it.
 - `plots.py` — matplotlib helpers for those experiments (error curves, the
   log-log map e_{k+1} against e_k, rank of X_k) and for the timing experiment
   (time against n, time against sigma_min); each takes an optional axis.
-- `timing.py` — `time_call`: warm-up, repeated calls, median and quartiles,
-  CUDA synchronization around every timed call.
+- `timing.py` — `time_call`: one timed call after optional warm-up, with CUDA
+  synchronization; `describe`: median, mean and std of repeated measurements.
 - `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on
   R^{m x n} (singular-value frame) and Sym^n (eigenvalue frame, built from
   the matrix absolute value).

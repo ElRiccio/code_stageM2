@@ -10,6 +10,7 @@ is expected.
 
 from __future__ import annotations
 
+import math
 from typing import Callable
 
 import torch
@@ -91,6 +92,41 @@ def sgn_ns_fixed(
     for _ in range(K):
         X = ns_iteration.ns_step_gram(X, coeffs)
     return X
+
+
+def sgn_ns_until(
+    M: torch.Tensor,
+    D: int,
+    eps: float,
+    k_max: int,
+    *,
+    power_iters: int,
+    margin: float,
+    generator: torch.Generator,
+) -> tuple[torch.Tensor, int, bool]:
+    """Decomposition-free msgn(M) for full-rank M, stopped on an SVD-free
+    residual: steps of degree D (min-side Gram form) on M / (margin * power
+    estimate of sigma_max) until ||I - X^H X||_F / sqrt(r) <= eps, r =
+    min(m, n). That quantity bounds the relative Frobenius error against
+    msgn(M) from above. The check reuses the Gram matrix of the step and
+    costs one host synchronization per iteration. Returns (X, K, reached),
+    K the number of steps taken (k_max if `reached` is False).
+
+    Usage: X, K, ok = sgn_ns_until(M, D=2, eps=1e-9, k_max=50, power_iters=10, margin=1.1, generator=g)
+    """
+    s = margin * spectral_norm_power(M, power_iters, generator=generator)
+    X = M / s
+    coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
+    r = min(M.shape[-2:])
+    eye = torch.eye(r, dtype=M.dtype, device=M.device)
+    level = eps * math.sqrt(r)
+    for K in range(k_max + 1):
+        G = ns_iteration.gram_matrix(X)
+        if bool(torch.linalg.norm(G - eye) <= level):
+            return X, K, True
+        if K < k_max:
+            X = ns_iteration.ns_step_gram(X, coeffs, gram=G)
+    return X, k_max, False
 
 
 def make_sgn_ns(

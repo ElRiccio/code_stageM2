@@ -190,13 +190,25 @@ def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def ns_step_gram(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
+def gram_matrix(X: torch.Tensor) -> torch.Tensor:
+    """Gram matrix on the smaller side of X: X^T X for m >= n, X X^T for
+    m < n, of size min(m, n) x min(m, n).
+
+    Usage: G = gram_matrix(X)
+    """
+    return X.mH @ X if X.shape[-2] >= X.shape[-1] else X @ X.mH
+
+
+def ns_step_gram(
+    X: torch.Tensor, coeffs: torch.Tensor, gram: torch.Tensor | None = None
+) -> torch.Tensor:
     """One step of the odd matrix polynomial Phi(X) = sum_j a[j] (X X^T)^j X,
     evaluated as X q(X^T X) for m >= n and q(X X^T) X for m < n, with
     q(G) = sum_j a[j] G^j summed by Horner's rule. The Gram matrix is
     min(m, n) x min(m, n) and a step costs one Gram product, D - 1 products
     of the Gram size and one product with X. `coeffs` holds a[0..D] on X's
-    device.
+    device. With `gram` = `gram_matrix(X)` already computed, the Gram product
+    is skipped; `gram` is not modified.
 
     Usage: ns_step_gram(X, bpoly_coeffs(2, dtype=X.dtype, device=X.device))
     """
@@ -204,7 +216,7 @@ def ns_step_gram(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
     if D == 0:
         return coeffs[0] * X
     tall = X.shape[-2] >= X.shape[-1]
-    G = X.mH @ X if tall else X @ X.mH
+    G = gram_matrix(X) if gram is None else gram
     Q = coeffs[D] * G
     Q.diagonal(dim1=-2, dim2=-1).add_(coeffs[D - 1])  # Q = a[D] G + a[D-1] I
     for j in range(D - 2, -1, -1):

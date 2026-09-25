@@ -1,6 +1,7 @@
 """Matplotlib helpers for the convergence experiments (results keyed by the
 degree D, a dict D -> tensor over the iterations) and for the SVD timing
-experiment (the result of `run_svd_timing`). Each takes an optional axis,
+experiment (the result of `run_svd_timing`), and the time-to-accuracy
+experiment (the result of `run_time_to_accuracy`). Each takes an optional axis,
 draws on it (a new one if omitted) and returns it. Degrees keep the same
 colour in every plot.
 """
@@ -149,6 +150,45 @@ def plot_time_vs_smin(res: dict, device: str, ax=None):
     ax.set_ylabel("time (s)")
     ax.set_title(f"{device}, $n$ = {n} (labels: $K_D$)")
     ax.legend(fontsize=8)
+    return ax
+
+
+def plot_time_vs_degree(
+    res: dict,
+    device: str,
+    dtype: torch.dtype,
+    n: int,
+    smin: float,
+    eps: float,
+    ax=None,
+    label: str | None = None,
+):
+    """Time to reach eps against the degree D for one device, dtype, size n and
+    smin: the median over the random matrices with a ±std bar, and the median
+    iteration count K written at each point. A `label` adds a legend entry, so
+    several selections can share one axis. `res` is the output of
+    `run_time_to_accuracy`.
+
+    Usage: plot_time_vs_degree(res, "cpu", torch.float64, 512, 1e-3, 1e-9)
+    """
+    ax = _axis(ax)
+    degrees = sorted(res["cfg"].degrees)
+    cell = res["cells"][device, dtype, n, smin, eps]
+    med = [cell[D]["time"]["median"] for D in degrees]
+    std = [cell[D]["time"]["std"] for D in degrees]
+    line = ax.errorbar(degrees, med, yerr=std, marker="o", ms=4, capsize=3, label=label)
+    for D, t in zip(degrees, med):
+        ax.annotate(
+            f"{cell[D]['K']['median']:g}", (D, t), textcoords="offset points", xytext=(0, 6),
+            ha="center", fontsize=7, color=line[0].get_color(),
+        )
+    ax.set_xticks(degrees)
+    ax.set_xlabel("degree $D$")
+    ax.set_ylabel("time to reach $\\varepsilon$ (s)")
+    name = str(dtype).removeprefix("torch.")
+    ax.set_title(f"{device}, {name}, $n$ = {n}, $\\sigma_{{\\min}}$ = {smin:g}, $\\varepsilon$ = {eps:g} (labels: $K$)")
+    if label is not None:
+        ax.legend(fontsize=8)
     return ax
 
 

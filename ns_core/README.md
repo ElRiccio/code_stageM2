@@ -13,11 +13,13 @@ iteration and the spectral operators built from it.
   the residual variable, orbits, `log10_error_orbit`, asymptotic error
   constant) and the matrix recursion (`ns_step_matrix`, `ns_orbit_matrix`,
   and `ns_step_gram`, the same step with the Gram matrix on the smaller side
-  and Horner's rule).
+  and Horner's rule, which can take that Gram matrix, `gram_matrix`, already
+  computed).
   The orbit functions take a degree `D` or a coefficient tensor `coeffs`.
 - `sign_map.py` — the matrix sign map: `sgn_svd` (exact), `make_sgn_ns` (the
   decomposition-free surrogate built from `ns_iteration`), both of type
-  `msgn`, so any spectral operator in `cpwl.py` accepts either.
+  `msgn`, so any spectral operator in `cpwl.py` accepts either. `sgn_ns_fixed`
+  runs K steps; `sgn_ns_until` runs until an SVD-free residual reaches a target.
 - `profiles.py` — the truncated series `B_D`, the basin radius `R_D`, the
   iteration count `K_D`, and the admissible quintics `x(1 + r1 t + r2 t^2)`:
   coefficients, `bmax`, slopes at 0 and 1, extremal slope, order of
@@ -28,7 +30,8 @@ iteration and the spectral operators built from it.
   tolerance), and its errors, numerical ranks and first hitting index.
 - `plots.py` — matplotlib helpers for those experiments (error curves, the
   log-log map e_{k+1} against e_k, rank of X_k) and for the timing experiment
-  (time against n, time against sigma_min); each takes an optional axis.
+  (time against n, time against sigma_min) and the time-to-accuracy experiment
+  (time against D); each takes an optional axis.
 - `timing.py` — `time_call`: one timed call after optional warm-up, with CUDA
   synchronization; `describe`: median, mean and std of repeated measurements.
 - `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on

@@ -1,5 +1,5 @@
-"""The Bjorck-Bowie polynomial family p_D(x) = x B_D(1 - x^2) and the
-Newton-Schulz recursion it drives, on the scalar line and on matrices.
+"""The Bjorck-Bowie polynomial family p_D(x) = x B_D(1 - x^2) and the associated
+Newton-Schulz recursion, on the scalar line and on matrices.
 
 Scalar side: coefficients of p_D, its evaluation in the residual variable
 t = 1 - x^2, orbits u_{k+1} = p_D(u_k), the log10 error orbit and the
@@ -35,8 +35,6 @@ def _t_d_coeffs(D: int) -> tuple[float, ...]:
 
 def central_binomial(j: int) -> int:
     """Central binomial coefficient C(2j, j).
-
-    Usage: central_binomial(3)  # 20
     """
     return math.comb(2 * j, j)
 
@@ -50,8 +48,6 @@ def bpoly_coeffs(
     """Coefficients a[0..D] of p_D(x) = sum_j a[j] x^(2j+1), cached per
     (D, dtype, device). The expansion is carried out in double precision and
     the result is returned in `dtype` on `device`.
-
-    Usage: a = bpoly_coeffs(2, dtype=M.dtype, device=M.device)
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -71,8 +67,6 @@ def bpoly_coeffs(
 def asymptotic_error_constant(D: int) -> float:
     """kappa_D = C(2D+2, D+1) / 2^(D+1): the constant in the order-(D+1)
     convergence u_k -> 1 of p_D.
-
-    Usage: asymptotic_error_constant(2)  # 2.5
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -87,8 +81,6 @@ def asymptotic_error_constant(D: int) -> float:
 def t_poly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
     """B_D(1 - x^2) = sum_{j<=D} c_j (1 - x^2)^j, summed in t = 1 - x^2 where
     every term is nonnegative on [-1, 1]. Shape, dtype and device follow `x`.
-
-    Usage: t_poly_eval(torch.linspace(0, 1, 5), D=2)
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -104,8 +96,6 @@ def t_poly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
 
 def bpoly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
     """p_D(x) = x B_D(1 - x^2), evaluated through the residual variable.
-
-    Usage: bpoly_eval(torch.tensor([0.3, 0.9]), D=2)
     """
     return x * t_poly_eval(x, D)
 
@@ -113,8 +103,6 @@ def bpoly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
 def odd_poly_eval(x: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
     """sum_j a[j] x^(2j+1) by Horner's rule in x^2, for coefficients
     a[0..D] given as a tensor; shape, dtype and device follow `x`.
-
-    Usage: odd_poly_eval(x, profiles.quintic_coeffs(r1, r2))
     """
     coeffs = coeffs.to(device=x.device, dtype=x.dtype)
     x2 = x * x
@@ -134,8 +122,6 @@ def scalar_orbit(
     """Orbit u_0, ..., u_K of u_{k+1} = p(u_k), as a tensor of shape
     (n_iters + 1, *u0.shape). p is p_D, or the odd polynomial with
     coefficients `coeffs` (D is then None).
-
-    Usage: scalar_orbit(torch.tensor([0.1, 0.5]), D=2, n_iters=8)
     """
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")
@@ -159,8 +145,6 @@ def log10_error_orbit(
     by direct subtraction. Values are floored at the machine epsilon of the
     orbit's dtype, the level at which u_k rounds to 1. A float u0 gives a
     float64 CPU orbit; a tensor u0 keeps its dtype and device.
-
-    Usage: log10_error_orbit(0.05, D=2, n_iters=10)
     """
     u0 = torch.as_tensor(u0, dtype=torch.float64) if not torch.is_tensor(u0) else u0
     if not bool(((u0 > 0.0) & (u0 < 1.0)).all()):
@@ -178,8 +162,6 @@ def log10_error_orbit(
 def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
     """One step of the odd matrix polynomial Phi(X) = sum_j a[j] (X X^T)^j X,
     with one matrix product per degree. `coeffs` holds a[0..D] on X's device.
-
-    Usage: ns_step_matrix(X, bpoly_coeffs(2, dtype=X.dtype, device=X.device))
     """
     G = X @ X.mH
     out = coeffs[0] * X
@@ -193,8 +175,6 @@ def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
 def gram_matrix(X: torch.Tensor) -> torch.Tensor:
     """Gram matrix on the smaller side of X: X^T X for m >= n, X X^T for
     m < n, of size min(m, n) x min(m, n).
-
-    Usage: G = gram_matrix(X)
     """
     return X.mH @ X if X.shape[-2] >= X.shape[-1] else X @ X.mH
 
@@ -209,8 +189,6 @@ def ns_step_gram(
     of the Gram size and one product with X. `coeffs` holds a[0..D] on X's
     device. With `gram` = `gram_matrix(X)` already computed, the Gram product
     is skipped; `gram` is not modified.
-
-    Usage: ns_step_gram(X, bpoly_coeffs(2, dtype=X.dtype, device=X.device))
     """
     D = coeffs.numel() - 1
     if D == 0:
@@ -242,8 +220,6 @@ def ns_orbit_matrix(
 
     With `tol`, iteration stops once ||X_{k+1} - X_k||_F < tol and the last
     iterate is repeated, so the list always has n_iters + 1 entries.
-
-    Usage: orbit = ns_orbit_matrix(M, D=2, n_iters=10)  # or coeffs=quintic_coeffs(r1, r2), D=None
     """
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")

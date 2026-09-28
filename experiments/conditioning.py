@@ -15,8 +15,6 @@ class ConditioningConfig:
     """Settings of the conditioning experiment. `eps` is the accuracy at which
     the observed and predicted iteration counts are read; `degrees` is the
     only list-valued field.
-
-    Usage: cfg = ConditioningConfig(smin=1e-3, eps=1e-8)
     """
 
     m: int = 128
@@ -35,8 +33,6 @@ def run_conditioning(cfg: ConditioningConfig) -> dict[str, dict[int, object]]:
     """Runs every degree in cfg.degrees on one matrix; returns
     {"error": {D: e_0..e_kmax}, "predicted": {D: K_D(smin, eps)},
     "iterations": {D: first k with error <= eps, or None}}.
-
-    Usage: res = run_conditioning(ConditioningConfig())
     """
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     error, predicted, iterations = {}, {}, {}

@@ -22,8 +22,6 @@ msgn = Callable[[torch.Tensor], torch.Tensor]
 
 def sgn_exact(t: torch.Tensor) -> torch.Tensor:
     """Scalar sign with sgn(0) = 0, applied elementwise.
-
-    Usage: sgn_exact(torch.tensor([-2.0, 0.0, 3.0]))
     """
     return torch.sign(t)
 
@@ -33,8 +31,6 @@ def sgn_svd(M: torch.Tensor, tol: float | None = None, driver: str | None = None
     values at or below `tol` count as zero; `tol` defaults to
     `metrics.numerical_rank_tol(M, sigma)`. `driver` is the CUDA SVD driver
     (see `metrics.reference_svd`).
-
-    Usage: N = sgn_svd(M)
     """
     U, sigma, V = metrics.reference_svd(M, driver=driver)
     if tol is None:
@@ -46,8 +42,6 @@ def sgn_svd(M: torch.Tensor, tol: float | None = None, driver: str | None = None
 def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
     """Largest singular value of M via torch.linalg, the default rescaling
     constant: msgn(M / beta) = msgn(M) for every beta > 0.
-
-    Usage: beta = spectral_norm_exact(M)
     """
     return torch.linalg.matrix_norm(M, ord=2)
 
@@ -59,8 +53,6 @@ def spectral_norm_power(
     M^T M from a random start. The estimate never exceeds the true value, so
     callers multiply it by a margin. Uses matrix-vector products only and no
     host synchronization.
-
-    Usage: beta = spectral_norm_power(M, 10, generator=g)
     """
     v = torch.randn(M.shape[-1], generator=generator, device=M.device, dtype=M.dtype)
     v = v / torch.linalg.norm(v)
@@ -83,8 +75,6 @@ def sgn_ns_fixed(
     `ns_iteration.ns_step_gram`) on M / (margin * power estimate of sigma_max).
     There is no residual check, no zero-scale test and no stored orbit, so
     nothing forces a device synchronization; a zero matrix is not handled.
-
-    Usage: X = sgn_ns_fixed(M, D=2, K=8, power_iters=10, margin=1.1, generator=g)
     """
     s = margin * spectral_norm_power(M, power_iters, generator=generator)
     X = M / s
@@ -111,8 +101,6 @@ def sgn_ns_until(
     msgn(M) from above. The check reuses the Gram matrix of the step and
     costs one host synchronization per iteration. Returns (X, K, reached),
     K the number of steps taken (k_max if `reached` is False).
-
-    Usage: X, K, ok = sgn_ns_until(M, D=2, eps=1e-9, k_max=50, power_iters=10, margin=1.1, generator=g)
     """
     s = margin * spectral_norm_power(M, power_iters, generator=generator)
     X = M / s
@@ -141,8 +129,6 @@ def make_sgn_ns(
     is recomputed at every call, so the callable applies to any argument
     (for instance alpha * N - M). With `tol`, iteration stops once the step
     ||X_{k+1} - X_k||_F falls below it.
-
-    Usage: msgn_ns = make_sgn_ns(D=2, n_iters=8); X = msgn_ns(M)
     """
 
     def msgn(M: torch.Tensor) -> torch.Tensor:

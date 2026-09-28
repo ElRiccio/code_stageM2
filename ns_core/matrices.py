@@ -22,8 +22,6 @@ def rand_gaussian(
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     """m x n matrix with i.i.d. standard normal entries (full rank almost surely).
-
-    Usage: M = rand_gaussian(64, 32, generator=g, dtype=torch.float64)
     """
     return torch.randn(m, n, generator=generator, device=device, dtype=dtype)
 
@@ -39,8 +37,6 @@ def rand_orthogonal_factor(
     """Semi-orthogonal q x k factor (q >= k) from the QR of a Gaussian block,
     with the diagonal of R made nonnegative so equal generator states give
     equal factors.
-
-    Usage: Q = rand_orthogonal_factor(64, 32, generator=g)
     """
     if k > q:
         raise ValueError("need q >= k for a semi-orthogonal q x k factor")
@@ -61,8 +57,6 @@ def rand_symmetric(
 ) -> torch.Tensor:
     """Symmetric n x n matrix 0.5 * (A + A^T) for Gaussian A; with
     `normalize` it is rescaled to spectral norm 1.
-
-    Usage: S = rand_symmetric(64, generator=g)
     """
     A = rand_gaussian(n, n, generator=generator, device=device, dtype=dtype)
     S = 0.5 * (A + A.T)
@@ -84,8 +78,6 @@ def rand_prescribed_spectrum(
 ) -> torch.Tensor:
     """U diag(sigma) V^T for random semi-orthogonal U (m x r) and V (n x r),
     r = len(sigma): a matrix whose singular values are exactly `sigma`.
-
-    Usage: M = rand_prescribed_spectrum(64, 32, torch.linspace(1, 0.1, 32), generator=g)
     """
     r = sigma.numel()
     if r > min(m, n):
@@ -111,8 +103,6 @@ def rand_rank_deficient(
     """Gaussian matrix whose `n_zero` smallest singular values are set to 0
     and the next `n_small` smallest to `s_small`. With `normalize`, the
     singular values are first scaled so the largest is 1.
-
-    Usage: M = rand_rank_deficient(64, 32, generator=g, n_zero=4, n_small=2, s_small=1e-3)
     """
     if n_zero < 0 or n_small < 0:
         raise ValueError("n_zero and n_small must be nonnegative")

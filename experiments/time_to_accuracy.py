@@ -31,8 +31,6 @@ class TimeToAccuracyConfig:
     estimate of sigma_max. `cpu_threads` None keeps the torch default. Devices
     must be available on the machine, e.g. ["cpu"] without a GPU. The timed
     region holds the pre-scaling and the iteration with its residual check.
-
-    Usage: cfg = TimeToAccuracyConfig(sizes=[128, 256], devices=["cpu"], eps=[1e-6], n_reps=5)
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -60,8 +58,6 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
     "reached": f}}}}, where t and k are {"median", "mean", "std"} over the
     matrices (t in seconds, k the number of iterations run) and f is the
     fraction of matrices that reached eps within cfg.k_max.
-
-    Usage: res = run_time_to_accuracy(TimeToAccuracyConfig(devices=["cpu"], sizes=[128, 256]))
     """
     generators = {}
     for device in cfg.devices:
@@ -124,8 +120,6 @@ def time_to_accuracy_table(
     matrices, for one device, dtype and smin: one row per size, one column per
     D. A trailing * marks a cell where some matrix did not reach eps within
     cfg.k_max. `res` is the output of `run_time_to_accuracy`.
-
-    Usage: time_to_accuracy_table(res, "cpu", torch.float64, 1e-2, 1e-9)
     """
     cfg, cells = res["cfg"], res["cells"]
 
@@ -150,8 +144,6 @@ def iterations_table(
     """Prints the number of iterations K run to reach eps, "median (mean)"
     over the random matrices, for one device, dtype and smin: one row per size,
     one column per D. `res` is the output of `run_time_to_accuracy`.
-
-    Usage: iterations_table(res, "cpu", torch.float64, 1e-2, 1e-9)
     """
     cfg, cells = res["cfg"], res["cells"]
     fmt = lambda c: f"{c['K']['median']:g} ({c['K']['mean']:.2f})"

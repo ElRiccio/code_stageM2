@@ -1,9 +1,4 @@
-"""Matplotlib helpers for the convergence experiments (results keyed by the
-degree D, a dict D -> tensor over the iterations) and for the SVD timing
-experiment (the result of `run_svd_timing`), and the time-to-accuracy
-experiment (the result of `run_time_to_accuracy`). Each takes an optional axis,
-draws on it (a new one if omitted) and returns it. Degrees keep the same
-colour in every plot.
+"""Matplotlib helpers 
 """
 
 from __future__ import annotations
@@ -37,8 +32,6 @@ def plot_error_curves(
     """Error against iteration k on a log scale, one curve per D. With `eps`,
     draws that level and marks the first k at or below it; with `predicted`
     (D -> K_D), draws a dashed vertical line at each predicted count.
-
-    Usage: plot_error_curves(res["error"], eps=1e-6, predicted=res["predicted"])
     """
     ax = _axis(ax)
     colors = _colors(errors)
@@ -69,8 +62,6 @@ def plot_error_map(errors: dict[int, torch.Tensor], ax=None, floor: float | None
     (slope D+1). Points with e_{k+1} at or below `floor` are dropped; by
     default the floor is 3x the final error of a curve that has stagnated
     (last two errors within a factor 2), and 0 otherwise.
-
-    Usage: plot_error_map(res["error"])
     """
     ax = _axis(ax)
     colors = _colors(errors)
@@ -107,8 +98,6 @@ def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
     smin: one curve per D for the Newton-Schulz msgn and a dashed black curve
     for the SVD (medians over the random matrices). `res` is the output of
     `run_svd_timing`.
-
-    Usage: plot_time_vs_size(res, "cpu", 1e-2)
     """
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
@@ -129,8 +118,6 @@ def plot_time_vs_smin(res: dict, device: str, ax=None):
     cfg.n_fixed: one curve per D, annotated with the iteration count K_D at
     every point, and a dashed black curve for the SVD. `res` is the output of
     `run_svd_timing`.
-
-    Usage: plot_time_vs_smin(res, "cpu")
     """
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
@@ -168,8 +155,6 @@ def plot_time_vs_degree(
     iteration count K written at each point. A `label` adds a legend entry, so
     several selections can share one axis. `res` is the output of
     `run_time_to_accuracy`.
-
-    Usage: plot_time_vs_degree(res, "cpu", torch.float64, 512, 1e-3, 1e-9)
     """
     ax = _axis(ax)
     degrees = sorted(res["cfg"].degrees)
@@ -195,8 +180,6 @@ def plot_time_vs_degree(
 def plot_ranks(ranks: dict[int, torch.Tensor], r: int | None = None, ax=None):
     """Numerical rank of X_k against iteration k, one curve per D; with `r`,
     draws the rank of M as a dashed horizontal line.
-
-    Usage: plot_ranks(res["rank"], r=orbit_tools.resolve_rank(m, n, rank))
     """
     ax = _axis(ax)
     colors = _colors(ranks)

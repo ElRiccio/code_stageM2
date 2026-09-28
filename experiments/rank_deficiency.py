@@ -22,8 +22,6 @@ class RankDeficiencyConfig:
     threshold, relative to the largest singular value, under which a singular
     value of X_k counts as zero (None: `eps`). `degrees` is the only
     list-valued field.
-
-    Usage: cfg = RankDeficiencyConfig(m=128, n=64, rank=16, smin=1e-2)
     """
 
     m: int = 128
@@ -44,8 +42,6 @@ def run_rank_deficiency(cfg: RankDeficiencyConfig) -> dict[str, dict[int, torch.
     """Runs every degree in cfg.degrees on one rank-r matrix; returns
     {"error": {D: e_0..e_kmax}, "rank": {D: numerical rank of X_0..X_kmax},
     "iterations": {D: first k with error <= eps, or None}}.
-
-    Usage: res = run_rank_deficiency(RankDeficiencyConfig())
     """
     r = orbit_tools.resolve_rank(cfg.m, cfg.n, cfg.rank)
     if r == min(cfg.m, cfg.n):

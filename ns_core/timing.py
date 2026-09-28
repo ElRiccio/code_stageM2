@@ -18,8 +18,6 @@ def time_call(
     `n_warmup` untimed calls. On a CUDA device the stream is synchronized
     before and after the timed call, so the time is that of completed work.
     Returns (seconds, output of the timed call).
-
-    Usage: t, X = time_call(lambda: sgn_svd(M), device="cuda", n_warmup=3)
     """
     cuda = torch.device(device).type == "cuda"
     for _ in range(n_warmup):
@@ -36,8 +34,6 @@ def time_call(
 def describe(values: list[float]) -> dict[str, float]:
     """Median, mean and sample standard deviation (0 for a single value) of
     a list of measurements.
-
-    Usage: describe([0.011, 0.012, 0.010])  # {"median": ..., "mean": ..., "std": ...}
     """
     t = torch.tensor(values, dtype=torch.float64)
     std = float(t.std()) if t.numel() > 1 else 0.0

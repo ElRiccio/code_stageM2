@@ -28,8 +28,6 @@ class SvdTimingConfig:
     smin / `power_margin`. `cpu_threads` None keeps the torch default;
     `svd_driver` None keeps torch's choice (CUDA only). Devices must be
     available on the machine, e.g. ["cpu"] without a GPU.
-
-    Usage: cfg = SvdTimingConfig(sizes=[128, 256], devices=["cpu"], n_reps=5)
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -59,8 +57,6 @@ def run_svd_timing(cfg: SvdTimingConfig) -> dict[str, object]:
     {"median", "mean", "std"} over the matrices: s in seconds, e the relative
     Frobenius error against N (measured outside the timer). K is the number
     of iterations run.
-
-    Usage: res = run_svd_timing(SvdTimingConfig(devices=["cpu"], sizes=[128, 256]))
     """
     eps = 10.0 * torch.finfo(cfg.dtype).eps if cfg.eps is None else cfg.eps
     K = {
@@ -136,8 +132,6 @@ def time_table(res: dict[str, object], device: str, smin: float) -> None:
     """Prints the time in seconds, "median ± std" over the random matrices,
     for one device and smin: one row per size, one column per D and one for the
     SVD. `res` is the output of `run_svd_timing`.
-
-    Usage: time_table(res, "cpu", 1e-2)
     """
     cfg, cells = res["cfg"], res["cells"]
     fmt = lambda s: f"{s['median']:.3g} ± {s['std']:.2g}"
@@ -160,8 +154,6 @@ def accuracy_table(res: dict[str, object], device: str, smin: float) -> None:
     matrices, for each D and the SVD at every size, and the number of
     iterations K that Newton-Schulz ran (fixed by D and smin). `res` is the
     output of `run_svd_timing`.
-
-    Usage: accuracy_table(res, "cpu", 1e-2)
     """
     cfg, cells = res["cfg"], res["cells"]
     sizes = sorted(cfg.sizes)

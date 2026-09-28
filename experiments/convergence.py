@@ -15,8 +15,6 @@ class ConvergenceConfig:
     """Settings of the convergence experiment. `rank` follows
     `orbit_tools.resolve_rank` (None = full rank); the nonzero singular values
     are log-spaced in [smin, 1]. `degrees` is the only list-valued field.
-
-    Usage: cfg = ConvergenceConfig(m=128, n=64, smin=1e-2, degrees=[1, 2, 3])
     """
 
     m: int = 128
@@ -33,8 +31,6 @@ class ConvergenceConfig:
 def run_convergence(cfg: ConvergenceConfig) -> dict[str, dict[int, torch.Tensor]]:
     """Runs every degree in cfg.degrees on one matrix; returns
     {"error": {D: e_0..e_kmax}}, the spectral-norm error against msgn(M).
-
-    Usage: res = run_convergence(ConvergenceConfig())
     """
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     error = {}

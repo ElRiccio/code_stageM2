@@ -29,7 +29,8 @@ iteration and the spectral operators built from it.
   orbit of the iteration in a chosen dtype (with an optional stopping
   tolerance), and its errors, numerical ranks and first hitting index.
 - `plots.py` — matplotlib helpers for those experiments (error curves, the
-  log-log map e_{k+1} against e_k, rank of X_k) and for the timing experiment
+  log-log map e_{k+1} against e_k, rank of X_k, and the input/target/iterate
+  spectrum of a decomposition-free operator) and for the timing experiment
   (time against n, time against sigma_min) and the time-to-accuracy experiment
   (time against D); each takes an optional axis.
 - `timing.py` — `time_call`: one timed call after optional warm-up, with CUDA

@@ -28,10 +28,13 @@ def plot_error_curves(
     ax=None,
     eps: float | None = None,
     predicted: dict[int, int] | None = None,
+    ylabel: str | None = None,
 ):
     """Error against iteration k on a log scale, one curve per D. With `eps`,
     draws that level and marks the first k at or below it; with `predicted`
-    (D -> K_D), draws a dashed vertical line at each predicted count.
+    (D -> K_D), draws a dashed vertical line at each predicted count. With
+    `ylabel`, overrides the default spectral-norm-error label, for callers
+    plotting a different error (e.g. a relative Frobenius error).
     """
     ax = _axis(ax)
     colors = _colors(errors)
@@ -51,7 +54,7 @@ def plot_error_curves(
     if predicted is not None:
         handles.append(Line2D([], [], color="k", ls="--", lw=1, label="predicted $K_D$"))
     ax.set_xlabel("iteration $k$")
-    ax.set_ylabel("$\\|X_k - \\mathrm{Sgn}(M)\\|_2$")
+    ax.set_ylabel(ylabel if ylabel is not None else "$\\|X_k - \\mathrm{Sgn}(M)\\|_2$")
     ax.legend(handles=handles, fontsize=8)
     return ax
 
@@ -190,5 +193,38 @@ def plot_ranks(ranks: dict[int, torch.Tensor], r: int | None = None, ax=None):
         ax.axhline(r, color="gray", ls="--", label=f"rank of $M$ = {r}")
     ax.set_xlabel("iteration $k$")
     ax.set_ylabel("numerical rank of $X_k$")
+    ax.legend(fontsize=8)
+    return ax
+
+
+def plot_spectrum(
+    sigma: torch.Tensor,
+    target: torch.Tensor,
+    coords: dict[int, torch.Tensor],
+    ax=None,
+    xaxis: str = "sigma",
+):
+    """The input singular values `sigma` (dotted), the exact target scalar
+    profile `target` (dashed), and the spectral coordinates of a
+    decomposition-free operator's output at a few iteration counts (one
+    curve per k in `coords`), all read against the sorted `sigma` (`xaxis`
+    = "sigma") or their rank index (`xaxis` = "index").
+    """
+    ax = _axis(ax)
+    order = torch.argsort(sigma)
+    s = sigma[order]
+    if xaxis == "sigma":
+        x, xlabel = _np(s), "$\\sigma_i(M)$"
+    elif xaxis == "index":
+        x, xlabel = _np(torch.arange(1, s.numel() + 1)), "index $i$ (increasing $\\sigma$)"
+    else:
+        raise ValueError("xaxis must be 'sigma' or 'index'")
+    ax.plot(x, _np(s), ":", color="0.35", lw=1.2, label="$\\sigma_i(M)$")
+    colors = _colors(coords)
+    for k in sorted(coords):
+        ax.plot(x, _np(coords[k][order]), lw=1.0, color=colors[k], label=f"k={k}")
+    ax.plot(x, _np(target[order]), "k--", lw=1.3, label="exact (SVD)")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("spectral coordinate")
     ax.legend(fontsize=8)
     return ax

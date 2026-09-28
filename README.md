@@ -21,6 +21,16 @@ thesis chapters; nothing here re-derives the theory.
   on that CPWL operator instead of the raw sign map, with every internal
   sign call stopped by tolerance rather than a fixed iteration count. Uses
   `ns_core`.
+
+  `svd_timing.py` itself can also run its Newton-Schulz route to a tolerance
+  instead of the fixed `K_D`: set `SvdTimingConfig(use_tolerance=True)` to
+  stop each matrix with `sign_map.sgn_ns_until` at `eps` (capped at
+  `k_max`); the default (`use_tolerance=False`) is unchanged. `time_to_accuracy.py`
+  can time the exact SVD-based `Sgn` alongside its tolerance-stopped routes:
+  set `TimeToAccuracyConfig(svd_reference_line=True)` to populate the
+  result's `"svd"` entry, drawn on a plot with
+  `ns_core.plots.add_svd_reference_line`; the default (`False`) computes no
+  SVD, as before.
 - `notebooks/` — one notebook per experiment (`exp1_convergence`,
   `exp2_conditioning`, `exp3_rank_deficiency`, `exp4_svd_timing`,
   `exp5_time_to_accuracy`, `exp6_cpwl_operator`, `exp7_cpwl_svd_timing`,

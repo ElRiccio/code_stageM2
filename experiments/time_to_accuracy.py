@@ -1,8 +1,9 @@
 """Time-to-accuracy experiment: wall-clock time of the decomposition-free msgn
 (generalized Newton-Schulz with the bpoly(D) profile) until an SVD-free
 residual reaches a target accuracy eps, over matrix size, sigma_min, device,
-precision and degree D. Every repetition uses a new random matrix of the same
-size and sigma_min, the same matrices as the SVD timing experiment."""
+precision and degree D, with an optional horizontal reference line for the
+exact SVD-based evaluation time. Every repetition uses a new random matrix of
+the same size and sigma_min, the same matrices as the SVD timing experiment."""
 
 from __future__ import annotations
 
@@ -28,9 +29,13 @@ class TimeToAccuracyConfig:
     reached, so targets below the rounding level of a dtype (about 1e-6 in
     float32) should not be requested for it. `power_iters` and `power_margin`
     set the pre-scaling: the scale is `power_margin` times the power-iteration
-    estimate of sigma_max. `cpu_threads` None keeps the torch default. Devices
-    must be available on the machine, e.g. ["cpu"] without a GPU. The timed
-    region holds the pre-scaling and the iteration with its residual check.
+    estimate of sigma_max. `svd_reference_line` toggles timing the exact
+    SVD-based msgn once per (device, dtype, n, smin), independent of eps and
+    D, for a horizontal reference line on the time-vs-degree plot; when False
+    (the default) that timing is skipped and the returned "svd" entry is
+    empty. `cpu_threads` None keeps the torch default. Devices must be
+    available on the machine, e.g. ["cpu"] without a GPU. The timed region
+    holds the pre-scaling and the iteration with its residual check.
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -40,6 +45,7 @@ class TimeToAccuracyConfig:
     dtypes: list[torch.dtype] = field(default_factory=lambda: [torch.float32, torch.float64])
     eps: list[float] = field(default_factory=lambda: [1e-3, 1e-6])
     k_max: int = 50
+    svd_reference_line: bool = False
     power_iters: int = 10
     power_margin: float = 1.1
     n_warmup: int = 3
@@ -53,11 +59,14 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
     """Times the Newton-Schulz msgn stopped at each target in cfg.eps, for
     every (device, dtype, size, smin, eps, D), over cfg.n_reps random
     matrices. Each matrix is built once in float64 on the CPU, without any
-    decomposition, and moved to each device in each dtype. Returns {"cfg":
-    cfg, "cells": {(device, dtype, n, smin, eps): {D: {"time": t, "K": k,
-    "reached": f}}}}, where t and k are {"median", "mean", "std"} over the
-    matrices (t in seconds, k the number of iterations run) and f is the
-    fraction of matrices that reached eps within cfg.k_max.
+    decomposition, and moved to each device in each dtype. With
+    `cfg.svd_reference_line`, `sign_map.sgn_svd` is also timed once per
+    (device, dtype, n, smin). Returns {"cfg": cfg, "cells": {(device, dtype,
+    n, smin, eps): {D: {"time": t, "K": k, "reached": f}}}, "svd": {(device,
+    dtype, n, smin): time stats}}, where t and k are {"median", "mean",
+    "std"} over the matrices (t in seconds, k the number of iterations run)
+    and f is the fraction of matrices that reached eps within cfg.k_max;
+    "svd" is empty unless `cfg.svd_reference_line` is True.
     """
     generators = {}
     for device in cfg.devices:
@@ -66,13 +75,14 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
     if cfg.cpu_threads is not None:
         threads = torch.get_num_threads()
         torch.set_num_threads(cfg.cpu_threads)
-    cells = {}
+    cells, svd_cells = {}, {}
     try:
         for n, smin in itertools.product(cfg.sizes, cfg.smins):
             if cfg.verbose:
                 print(f"n={n} smin={smin:g}: {cfg.n_reps} matrices")
             runs = list(itertools.product(cfg.devices, cfg.dtypes, cfg.eps, cfg.degrees))
             samples = {r: {"time": [], "K": [], "reached": []} for r in runs}
+            svd_samples = {(device, dtype): [] for device, dtype in itertools.product(cfg.devices, cfg.dtypes)}
             sigma = orbit_tools.log_spectrum(n, smin)
             for rep in range(cfg.n_reps):
                 g = torch.Generator()
@@ -81,6 +91,11 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
                 warm = cfg.n_warmup if rep == 0 else 0
                 for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
                     M = M64.to(device=device, dtype=dtype)
+
+                    if cfg.svd_reference_line:
+                        t, _ = timing.time_call(lambda: sign_map.sgn_svd(M), device, warm)
+                        svd_samples[device, dtype].append(t)
+
                     for eps, D in itertools.product(cfg.eps, cfg.degrees):
                         fn = lambda D=D, eps=eps: sign_map.sgn_ns_until(
                             M, D, eps, cfg.k_max, power_iters=cfg.power_iters,
@@ -107,10 +122,13 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
                         for D in cfg.degrees
                     )
                     print(f"  {device}, {str(dtype).removeprefix('torch.')}, eps={eps:g}: {line}")
+            if cfg.svd_reference_line:
+                for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
+                    svd_cells[device, dtype, n, smin] = timing.describe(svd_samples[device, dtype])
     finally:
         if cfg.cpu_threads is not None:
             torch.set_num_threads(threads)
-    return {"cfg": cfg, "cells": cells}
+    return {"cfg": cfg, "cells": cells, "svd": svd_cells}
 
 
 def time_to_accuracy_table(

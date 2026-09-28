@@ -117,6 +117,38 @@ def sgn_ns_until(
     return X, k_max, False
 
 
+def make_sgn_ns_until(
+    D: int,
+    eps: float,
+    k_max: int,
+    *,
+    power_iters: int,
+    margin: float,
+    generator: torch.Generator,
+    stats: list[tuple[int, bool]] | None = None,
+) -> msgn:
+    """The tolerance-stopped decomposition-free msgn: a callable running
+    `sgn_ns_until` on its argument and returning just the sign matrix, so it
+    can be passed wherever a matrix sign map is expected (e.g. the sign
+    forms of `cpwl.py`, which may call it more than once per evaluation).
+    With `stats`, each call appends its (K, reached) pair, so a caller can
+    recover the iteration count and convergence flag of every internal sign
+    call made while evaluating a composite expression, and `len(stats)`
+    after the call is the number of sign evaluations actually used. Usage:
+    stats = []; sgn = make_sgn_ns_until(D, 1e-6, 50, power_iters=10, margin=1.1, generator=g, stats=stats); sgn(M).
+    """
+
+    def msgn(M: torch.Tensor) -> torch.Tensor:
+        X, K, reached = sgn_ns_until(
+            M, D, eps, k_max, power_iters=power_iters, margin=margin, generator=generator
+        )
+        if stats is not None:
+            stats.append((K, reached))
+        return X
+
+    return msgn
+
+
 def make_sgn_ns(
     D: int,
     n_iters: int,

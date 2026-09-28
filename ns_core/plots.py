@@ -180,6 +180,26 @@ def plot_time_vs_degree(
     return ax
 
 
+def add_svd_reference_line(
+    ax, res: dict, device: str, dtype: torch.dtype, n: int, smin: float, label: str = "SVD"
+):
+    """Draws a horizontal dashed black line at the median exact SVD-based
+    evaluation time for one (device, dtype, size, smin), read from a result
+    dict with an "svd" entry keyed the same way (e.g.
+    `cpwl_time_to_accuracy.run_cpwl_time_to_accuracy` with
+    `svd_reference_line=True`). No-op if that key is absent, so it is safe
+    to call unconditionally. Usage:
+    add_svd_reference_line(ax, res, "cpu", torch.float64, 512, 1e-2).
+    """
+    svd = res.get("svd", {})
+    key = (device, dtype, n, smin)
+    if key not in svd:
+        return ax
+    ax.axhline(svd[key]["median"], color="k", ls="--", lw=1, label=label)
+    ax.legend(fontsize=8)
+    return ax
+
+
 def plot_ranks(ranks: dict[int, torch.Tensor], r: int | None = None, ax=None):
     """Numerical rank of X_k against iteration k, one curve per D; with `r`,
     draws the rank of M as a dashed horizontal line.

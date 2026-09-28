@@ -20,6 +20,9 @@ iteration and the spectral operators built from it.
   decomposition-free surrogate built from `ns_iteration`), both of type
   `msgn`, so any spectral operator in `cpwl.py` accepts either. `sgn_ns_fixed`
   runs K steps; `sgn_ns_until` runs until an SVD-free residual reaches a target.
+  `make_sgn_ns_until` wraps `sgn_ns_until` as an `msgn` callable (so it too
+  can be passed to `cpwl.py`'s sign forms), with an optional `stats` list
+  that collects each internal call's (iterations, reached) pair.
 - `profiles.py` — the truncated series `B_D`, the basin radius `R_D`, the
   iteration count `K_D`, and the admissible quintics `x(1 + r1 t + r2 t^2)`:
   coefficients, `bmax`, slopes at 0 and 1, extremal slope, order of
@@ -32,7 +35,8 @@ iteration and the spectral operators built from it.
   log-log map e_{k+1} against e_k, rank of X_k, and the input/target/iterate
   spectrum of a decomposition-free operator) and for the timing experiment
   (time against n, time against sigma_min) and the time-to-accuracy experiment
-  (time against D); each takes an optional axis.
+  (time against D); each takes an optional axis. `add_svd_reference_line`
+  draws an optional horizontal exact-SVD-time line on such an axis.
 - `timing.py` — `time_call`: one timed call after optional warm-up, with CUDA
   synchronization; `describe`: median, mean and std of repeated measurements.
 - `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on

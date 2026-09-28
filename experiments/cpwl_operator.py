@@ -58,46 +58,64 @@ def resolve_profile(
 ) -> tuple[Callable[[torch.Tensor], torch.Tensor], Callable[[torch.Tensor, sign_map.msgn], torch.Tensor]]:
     """The exact scalar profile and its decomposition-free sign-form lift
     selected by cfg.profile, bound to cfg's parameters: (scalar_fn,
-    sign_form), with scalar_fn(sigma) the exact map on singular values and
-    sign_form(M, sgn) the matrix expression built from a sign callable.
-    Usage: scalar_fn, sign_form = resolve_profile(cfg); sign_form(M, sgn).
+    sign_form), with sign_form(M, sgn) the matrix expression built from a
+    sign callable. Every sign form reads a zero singular value as sgn(0) = 0,
+    so it can only ever produce f(0) = 0 there; scalar_fn is therefore the
+    odd extension (cpwl.odd_extension) of the chosen profile, which agrees
+    with the raw profile wherever it already vanishes at 0 and otherwise
+    forces it to 0 there too, so scalar_fn stays the exact reference that
+    sign_form can actually converge to, including on rank-deficient M. Usage:
+    scalar_fn, sign_form = resolve_profile(cfg); sign_form(M, sgn).
     """
     if cfg.profile == "clip":
         alpha, beta = cfg.alpha, cfg.beta
-        return (
-            lambda x: cpwl.clip(x, alpha, beta),
-            lambda M, sgn: cpwl.clip_map(M, alpha, beta, sgn),
-        )
-    if cfg.profile == "soft":
+        scalar_fn = lambda x: cpwl.clip(x, alpha, beta)
+        sign_form = lambda M, sgn: cpwl.clip_map(M, alpha, beta, sgn)
+    elif cfg.profile == "soft":
         gamma = cfg.gamma
-        return (
-            lambda x: cpwl.soft_threshold(x, gamma),
-            lambda M, sgn: cpwl.soft_map(M, gamma, sgn),
-        )
-    if cfg.profile == "leaky_relu":
+        scalar_fn = lambda x: cpwl.soft_threshold(x, gamma)
+        sign_form = lambda M, sgn: cpwl.soft_map(M, gamma, sgn)
+    elif cfg.profile == "leaky_relu":
         a = cfg.a
-        return (
-            lambda x: cpwl.leaky_relu(x, a),
-            lambda M, sgn: cpwl.leaky_relu_map(M, a, sgn),
-        )
-    if cfg.profile == "capped_leaky_relu":
+        scalar_fn = lambda x: cpwl.leaky_relu(x, a)
+        sign_form = lambda M, sgn: cpwl.leaky_relu_map(M, a, sgn)
+    elif cfg.profile == "capped_leaky_relu":
         a, beta = cfg.a, cfg.beta
-        return (
-            lambda x: cpwl.capped_leaky_relu(x, a, beta),
-            lambda M, sgn: cpwl.capped_leaky_relu_map(M, a, beta, sgn),
-        )
-    if cfg.profile == "leaky_clip":
+        scalar_fn = lambda x: cpwl.capped_leaky_relu(x, a, beta)
+        sign_form = lambda M, sgn: cpwl.capped_leaky_relu_map(M, a, beta, sgn)
+    elif cfg.profile == "leaky_clip":
         a, mu = cfg.a, cfg.mu
-        return (
-            lambda x: cpwl.leaky_clip(x, a, mu),
-            lambda M, sgn: cpwl.leaky_clip_map(M, a, mu, sgn),
-        )
-    if cfg.profile == "spline":
+        scalar_fn = lambda x: cpwl.leaky_clip(x, a, mu)
+        sign_form = lambda M, sgn: cpwl.leaky_clip_map(M, a, mu, sgn)
+    elif cfg.profile == "spline":
         if cfg.knots is None or cfg.vals is None:
             raise ValueError("profile 'spline' requires knots and vals")
         spline = cpwl.PiecewiseLinearProfile(torch.tensor(cfg.knots), torch.tensor(cfg.vals))
-        return (spline.eval_relu_form, lambda M, sgn: cpwl.spline_map_sign(M, spline, sgn))
-    raise ValueError(f"unknown profile {cfg.profile!r}")
+        scalar_fn = spline.eval_relu_form
+        sign_form = lambda M, sgn: cpwl.spline_map_sign(M, spline, sgn)
+    else:
+        raise ValueError(f"unknown profile {cfg.profile!r}")
+    return cpwl.odd_extension(scalar_fn), sign_form
+
+
+def spectral_reference(
+    M: torch.Tensor, scalar_fn: Callable[[torch.Tensor], torch.Tensor]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """(U, sigma, V, target, Y): the SVD frame of M, sigma thresholded at
+    metrics.numerical_rank_tol so a rounding-level near-zero singular value
+    (M reconstructed from an exactly rank-deficient spectrum lands there, not
+    on an exact 0.0) reads as the same zero that sign_map.sgn_svd(M) reads it
+    as, `target` = scalar_fn(sigma) at that cleaned sigma, and Y = U diag(target)
+    V^T the exact spectral operator: the reference a decomposition-free sign
+    form built on msgn can actually converge to. Usage:
+    U, sigma, V, target, Y = spectral_reference(M, scalar_fn).
+    """
+    U, sigma, V = metrics.reference_svd(M)
+    tol = metrics.numerical_rank_tol(M, sigma)
+    sigma_clean = torch.where(sigma > tol, sigma, torch.zeros_like(sigma))
+    target = scalar_fn(sigma_clean)
+    Y = (U * target) @ V.mH
+    return U, sigma, V, target, Y
 
 
 def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, dict[int, torch.Tensor]]:
@@ -110,7 +128,7 @@ def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, dict[int, torch.T
     """
     M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     scalar_fn, sign_form = resolve_profile(cfg)
-    Y_exact = metrics.op_svd(M, scalar_fn)
+    _, _, _, _, Y_exact = spectral_reference(M, scalar_fn)
     Md = M.to(cfg.dtype)
     tol = orbit_tools.default_tol(cfg.dtype) if cfg.tol is None else cfg.tol
 
@@ -134,8 +152,7 @@ def run_cpwl_spectrum(cfg: CPWLOperatorConfig) -> dict[str, object]:
     """
     M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     scalar_fn, sign_form = resolve_profile(cfg)
-    U, sigma, V = metrics.reference_svd(M)
-    target = scalar_fn(sigma)
+    U, sigma, V, target, _ = spectral_reference(M, scalar_fn)
     Md = M.to(cfg.dtype)
     tol = orbit_tools.default_tol(cfg.dtype) if cfg.tol is None else cfg.tol
 

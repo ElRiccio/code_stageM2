@@ -37,9 +37,23 @@ that is.
 
 A few things worth knowing:
 
-- **Two ways to stop.** `svd_timing.py` normally runs a fixed number of steps
-  (K_D). Set `SvdTimingConfig(use_tolerance=True)` and it stops each matrix
-  when its residual reaches `eps` (capped at `k_max`) instead.
+- **Two ways to stop.** The experiments that compare against the exact sign
+  (exp1, exp2, exp3, exp6) know the error at every step, so once it reaches
+  `eps` the iterate is frozen and its error is held until `k_max`. The timing
+  experiments (exp4, exp5, exp7, exp8) can't afford that reference, so they stop
+  on a residual instead, `||X (X^T X - I)||_F <= eps sqrt(r)`. It is zero at
+  singular values 0 and 1, so it also works on rank-deficient matrices
+  (singular values below about `eps` count as zero, as in `sgn_svd`).
+  `svd_timing.py` normally runs a fixed number of steps (K_D); set
+  `SvdTimingConfig(use_tolerance=True)` to use the residual (capped at `k_max`).
+- **Why stop at all.** In floating point the zero singular values of a
+  rank-deficient matrix are not exactly zero, and the iteration multiplies
+  them by about 3/2 (degree 1) per step until they are promoted to 1. That is
+  after roughly 40 steps in float32 and 90 in float64. A fixed step count or
+  `k_max` therefore has to be long enough for the smallest genuine singular
+  value and short enough not to reach that point. The noise also sets the
+  accuracy floor: in float32 a rank-deficient run bottoms out near 1e-5, so
+  `eps` there should be around 1e-4, not the default of 10 machine epsilons.
 - **SVD reference line.** `time_to_accuracy.py` can also time the exact SVD
   sign, if you set `TimeToAccuracyConfig(svd_reference_line=True)`. Draw it
   with `ns_core.plots.add_svd_reference_line`. It's off by default, so no SVD

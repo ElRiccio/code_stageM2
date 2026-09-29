@@ -20,7 +20,9 @@ and the spectral operators you can build from them.
   the SVD-free approximation. Both have the same shape (matrix in, sign out,
   called `msgn`), so anything in `cpwl.py` accepts either. The Newton-Schulz
   versions come in three flavors: `sgn_ns_fixed` runs K steps,
-  `sgn_ns_until` runs until a residual reaches a target, and
+  `sgn_ns_until` runs until the residual `||X (X^T X - I)||_F` reaches a target
+  (it is zero at singular values 0 and 1, so rank-deficient and zero matrices
+  are fine), and
   `make_sgn_ns_until` wraps that as an `msgn`. Give it a `stats` list and it
   records (steps, reached) for every internal call.
 - `profiles.py` has the closed-form quantities: the truncated series B_D, the
@@ -29,6 +31,8 @@ and the spectral operators you can build from them.
 - `orbit_tools.py` supports the convergence experiments: building a test
   matrix with log-spaced singular values plus its exact sign, running the
   iteration, and measuring errors, ranks and the first step below a target.
+  `run_orbit` freezes the iterate once its error reaches `eps`, so noise in the
+  null space of a rank-deficient matrix is not amplified afterwards.
 - `plots.py` has the plotting helpers, all taking an optional axis: error
   curves, the e_{k+1} vs e_k map, rank curves, spectra, and the timing plots
   (time vs n, vs smin, vs degree). `add_svd_reference_line` adds the exact-SVD

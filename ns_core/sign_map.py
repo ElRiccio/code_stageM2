@@ -103,7 +103,7 @@ def sgn_ns_until(
     generator: torch.Generator,
 ) -> tuple[torch.Tensor, int, bool]:
     """
-    M: input matrix (full rank)
+    M: input matrix
     D: degree
     eps: target residual
     k_max: step cap
@@ -111,17 +111,23 @@ def sgn_ns_until(
     margin: norm safety factor
     generator: RNG
     Returns: X, steps K, reached target?
-    Note: one host sync per step
+    Note: stops on ||X (X^H X - I)||_F <= eps sqrt(r), which is also zero at zero singular
+    values, so singular values below about eps count as zero (as in sgn_svd); one host sync
+    per step, and k_max should stay below the step where null-space noise is amplified to 1
     """
+    if bool(torch.linalg.norm(M) == 0):
+        return torch.zeros_like(M), 0, True
     s = margin * spectral_norm_power(M, power_iters, generator=generator)
     X = M / s
     coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
     r = min(M.shape[-2:])
     eye = torch.eye(r, dtype=M.dtype, device=M.device)
     level = eps * math.sqrt(r)
+    tall = M.shape[-2] >= M.shape[-1]
     for K in range(k_max + 1):
         G = ns_iteration.gram_matrix(X)
-        if bool(torch.linalg.norm(G - eye) <= level):
+        R = X @ (G - eye) if tall else (G - eye) @ X
+        if bool(torch.linalg.norm(R) <= level):
             return X, K, True
         if K < k_max:
             X = ns_iteration.ns_step_gram(X, coeffs, gram=G)
@@ -165,13 +171,11 @@ def make_sgn_ns(
     n_iters: int,
     *,
     scale: torch.Tensor | float | None = None,
-    tol: float | None = None,
 ) -> msgn:
     """
     D: degree
     n_iters: steps
     scale: divisor for M (default: spectral norm, recomputed per call)
-    tol: early stop when a step changes less than this
     Returns: msgn function (matrix -> sign)
     """
 
@@ -183,10 +187,7 @@ def make_sgn_ns(
         coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
         X = M / s
         for _ in range(n_iters):
-            X_prev = X
             X = ns_iteration.ns_step_matrix(X, coeffs)
-            if tol is not None and torch.linalg.norm(X - X_prev) < tol:
-                break
         return X
 
     return msgn

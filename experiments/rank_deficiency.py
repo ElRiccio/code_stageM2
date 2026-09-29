@@ -17,14 +17,13 @@ class RankDeficiencyConfig:
     rank: see orbit_tools.resolve_rank; must be below full (e.g. -1)
     smin: smallest nonzero singular value
     degrees: degrees to compare
-    eps: accuracy for the first-hit step
+    eps: accuracy for the first-hit step and the freeze
     k_max: steps
-    tol: early-stop step size (None = orbit_tools.default_tol)
     rank_tol: relative cutoff for "zero" singular values (None = eps)
     dtype: precision
     device: cpu or cuda
     seed: RNG seed
-    Note: the early stop freezes the iterate so rounding noise in the null space is not amplified
+    Note: the iterate is frozen once the error reaches eps, so rounding noise in the null space is not amplified
     """
 
     m: int = 128
@@ -34,7 +33,6 @@ class RankDeficiencyConfig:
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     eps: float = 1e-8
     k_max: int = 40
-    tol: float | None = None
     rank_tol: float | None = None
     dtype: torch.dtype = torch.float64
     device: str = "cpu"
@@ -50,13 +48,11 @@ def run_rank_deficiency(cfg: RankDeficiencyConfig) -> dict[str, dict[int, torch.
     r = orbit_tools.resolve_rank(cfg.m, cfg.n, cfg.rank)
     if r == min(cfg.m, cfg.n):
         raise ValueError("rank must resolve to less than min(m, n)")
-    tol = orbit_tools.default_tol(cfg.dtype) if cfg.tol is None else cfg.tol
     rank_tol = cfg.eps if cfg.rank_tol is None else cfg.rank_tol
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     error, rank, iterations = {}, {}, {}
     for D in cfg.degrees:
-        orbit = orbit_tools.run_orbit(M, D, cfg.k_max, cfg.dtype, tol=tol)
-        error[D] = orbit_tools.orbit_errors(orbit, N)
+        orbit, error[D] = orbit_tools.run_orbit(M, N, D, cfg.k_max, cfg.dtype, cfg.eps)
         rank[D] = orbit_tools.orbit_ranks(orbit, rank_tol)
         iterations[D] = orbit_tools.first_hit(error[D], cfg.eps)
     return {"error": error, "rank": rank, "iterations": iterations}

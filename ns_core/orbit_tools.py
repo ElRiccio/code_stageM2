@@ -9,6 +9,7 @@ floor in a curve comes from the iteration, not the reference.
 from __future__ import annotations
 
 import math
+import warnings
 
 import torch
 
@@ -74,40 +75,51 @@ def make_instance(
     return M, sign_map.sgn_svd(M)
 
 
-def default_tol(dtype: torch.dtype) -> float:
+def default_eps(dtype: torch.dtype) -> float:
     """
     dtype: working precision
-    Returns: default early-stop tolerance (sqrt of machine epsilon)
+    Returns: default freeze precision (10 machine epsilons)
     """
-    return math.sqrt(torch.finfo(dtype).eps)
+    return 10.0 * torch.finfo(dtype).eps
 
 
 def run_orbit(
     M: torch.Tensor,
+    N: torch.Tensor,
     D: int,
     k_max: int,
     dtype: torch.dtype,
-    tol: float | None = None,
-) -> list[torch.Tensor]:
+    eps: float | None = None,
+) -> tuple[list[torch.Tensor], torch.Tensor]:
     """
     M: input matrix (largest singular value 1)
+    N: exact sign of M
     D: degree
     k_max: steps
     dtype: precision to run in
-    tol: early stop when a step changes less than this
-    Returns: list of k_max + 1 iterates, in float64
+    eps: freeze precision (None = default_eps)
+    Returns: list of k_max + 1 iterates in float64, spectral-norm error per iterate
+    Note: once the error is <= eps the iterate and its error are held to k_max, so
+    rounding noise in the null space is never amplified; below default_eps it never fires
     """
-    orbit = ns_iteration.ns_orbit_matrix(M.to(dtype), D, k_max, scale=1.0, tol=tol)
-    return [X.to(torch.float64) for X in orbit]
-
-
-def orbit_errors(orbit: list[torch.Tensor], N: torch.Tensor) -> torch.Tensor:
-    """
-    orbit: iterates
-    N: exact sign
-    Returns: spectral-norm error per iterate
-    """
-    return torch.stack([metrics.spectral_error(X, N) for X in orbit])
+    if eps is None:
+        eps = default_eps(dtype)
+    elif eps < default_eps(dtype):
+        warnings.warn(f"eps={eps:g} is below the {dtype} floor, so the freeze may never fire")
+    coeffs = ns_iteration.bpoly_coeffs(D, dtype=dtype, device=M.device)
+    X = M.to(dtype)
+    orbit, errors = [], []
+    frozen = False
+    for k in range(k_max + 1):
+        if not frozen:
+            X64 = X.to(torch.float64)
+            err = metrics.spectral_error(X64, N)
+            frozen = bool(err <= eps)
+        orbit.append(X64)
+        errors.append(err)
+        if not frozen and k < k_max:
+            X = ns_iteration.ns_step_matrix(X, coeffs)
+    return orbit, torch.stack(errors)
 
 
 def orbit_ranks(orbit: list[torch.Tensor], tol: float) -> torch.Tensor:

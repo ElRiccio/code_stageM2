@@ -17,7 +17,7 @@ class ConditioningConfig:
     rank: see orbit_tools.resolve_rank (None = full)
     smin: smallest nonzero singular value
     degrees: degrees to compare
-    eps: accuracy at which step counts are read
+    eps: accuracy at which step counts are read and the iterate is frozen
     k_max: steps
     dtype: precision
     device: cpu or cuda
@@ -45,8 +45,7 @@ def run_conditioning(cfg: ConditioningConfig) -> dict[str, dict[int, object]]:
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     error, predicted, iterations = {}, {}, {}
     for D in cfg.degrees:
-        orbit = orbit_tools.run_orbit(M, D, cfg.k_max, cfg.dtype)
-        error[D] = orbit_tools.orbit_errors(orbit, N)
+        _, error[D] = orbit_tools.run_orbit(M, N, D, cfg.k_max, cfg.dtype, cfg.eps)
         predicted[D] = profiles.iteration_count_bound(D, 1.0 - cfg.smin**2, cfg.eps)
         iterations[D] = orbit_tools.first_hit(error[D], cfg.eps)
     return {"error": error, "predicted": predicted, "iterations": iterations}

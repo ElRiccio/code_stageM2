@@ -226,7 +226,6 @@ def ns_orbit_matrix(
     *,
     coeffs: torch.Tensor | None = None,
     scale: torch.Tensor | float | None = None,
-    tol: float | None = None,
 ) -> list[torch.Tensor]:
     """
     M: input matrix
@@ -234,9 +233,7 @@ def ns_orbit_matrix(
     n_iters: steps
     coeffs: custom odd polynomial
     scale: divisor for M (default: spectral norm)
-    tol: early stop when a step changes less than this
     Returns: list of n_iters + 1 iterates
-    Note: after an early stop the last iterate is repeated
     """
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")
@@ -252,12 +249,7 @@ def ns_orbit_matrix(
 
     X = M / scale
     out = [X]
-    stopped = False
     for _ in range(n_iters):
-        if not stopped:
-            X_prev = X
-            X = ns_step_matrix(X, coeffs)
-            if tol is not None and torch.linalg.norm(X - X_prev) < tol:
-                stopped = True
+        X = ns_step_matrix(X, coeffs)
         out.append(X)
     return out

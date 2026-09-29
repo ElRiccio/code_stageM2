@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 
 import torch
 
-from experiments.cpwl_operator import resolve_profile
-from ns_core import matrices, orbit_tools, sign_map, timing
+from experiments.cpwl_operator import resolve_profile, spectral_reference
+from ns_core import matrices, metrics, orbit_tools, sign_map, timing
 
 
 @dataclass
@@ -30,6 +30,7 @@ class CPWLTimeToAccuracyConfig:
     eps: target accuracies for every internal sign call
     k_max: step cap per sign call
     svd_reference_line: also time the SVD-based operator
+    measure_error: also record the error reached against the exact operator (one extra SVD per matrix)
     power_iters, power_margin, n_warmup, n_reps, cpu_threads, seed, verbose: as in TimeToAccuracyConfig
     Note: a sign call that misses its target is flagged, not fatal
     """
@@ -50,6 +51,7 @@ class CPWLTimeToAccuracyConfig:
     eps: list[float] = field(default_factory=lambda: [1e-3, 1e-6])
     k_max: int = 50
     svd_reference_line: bool = True
+    measure_error: bool = True
     power_iters: int = 10
     power_margin: float = 1.1
     n_warmup: int = 3
@@ -62,9 +64,10 @@ class CPWLTimeToAccuracyConfig:
 def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object]:
     """
     cfg: settings
-    Returns: {"cfg", "cells": {(device, dtype, n, smin, eps): {D: {"time", "K", "reached"}}},
+    Returns: {"cfg", "cells": {(device, dtype, n, smin, eps): {D: {"time", "K", "reached", "error"}}},
     "svd": {(device, dtype, n, smin): time stats}}
-    Note: time and K are {median, mean, std} over matrices; K = largest step count any
+    Note: time, K and error are {median, mean, std} over matrices; error is relative Frobenius vs
+    the exact operator (absent unless measure_error is on); K = largest step count any
     internal call needed; reached = fraction of matrices where every call hit its target;
     "svd" is empty unless svd_reference_line is on
     """
@@ -78,11 +81,12 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
         torch.set_num_threads(cfg.cpu_threads)
     cells, svd_cells = {}, {}
     try:
-        for n, smin in itertools.product(cfg.sizes, cfg.smins):
+        blocks = list(itertools.product(cfg.sizes, cfg.smins))
+        for i, (n, smin) in enumerate(blocks, 1):
             if cfg.verbose:
-                print(f"n={n} smin={smin:g}: {cfg.n_reps} matrices")
+                print(f"[{i}/{len(blocks)}] n={n} smin={smin:g} ({cfg.n_reps} matrices)")
             runs = list(itertools.product(cfg.devices, cfg.dtypes, cfg.eps, cfg.degrees))
-            samples = {r: {"time": [], "K": [], "reached": []} for r in runs}
+            samples = {r: {"time": [], "K": [], "reached": [], "error": []} for r in runs}
             svd_samples = {(device, dtype): [] for device, dtype in itertools.product(cfg.devices, cfg.dtypes)}
             sigma = orbit_tools.log_spectrum(n, smin)
             for rep in range(cfg.n_reps):
@@ -90,6 +94,7 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
                 g.manual_seed(cfg.seed + rep)
                 M64 = matrices.rand_prescribed_spectrum(n, n, sigma, generator=g, dtype=torch.float64)
                 warm = cfg.n_warmup if rep == 0 else 0
+                Y64 = spectral_reference(M64.to(cfg.devices[0]), scalar_fn)[-1] if cfg.measure_error else None
                 for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
                     M = M64.to(device=device, dtype=dtype)
 
@@ -112,27 +117,27 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
                             D, eps, cfg.k_max, power_iters=cfg.power_iters,
                             margin=cfg.power_margin, generator=generators[device], stats=stats,
                         )
-                        t, _ = timing.time_call(lambda: sign_form(M, sgn), device, 0)
+                        t, Y = timing.time_call(lambda: sign_form(M, sgn), device, 0)
                         s = samples[device, dtype, eps, D]
                         s["time"].append(t)
                         s["K"].append(float(max(k for k, _ in stats)) if stats else 0.0)
                         s["reached"].append(float(all(r for _, r in stats)))
+                        if cfg.measure_error:
+                            s["error"].append(float(metrics.relative_frobenius_error(Y.double(), Y64.to(device))))
             for device, dtype, eps in itertools.product(cfg.devices, cfg.dtypes, cfg.eps):
                 cells[device, dtype, n, smin, eps] = {
                     D: {
                         "time": timing.describe(samples[device, dtype, eps, D]["time"]),
                         "K": timing.describe(samples[device, dtype, eps, D]["K"]),
                         "reached": sum(samples[device, dtype, eps, D]["reached"]) / cfg.n_reps,
+                        **(
+                            {"error": timing.describe(samples[device, dtype, eps, D]["error"])}
+                            if cfg.measure_error
+                            else {}
+                        ),
                     }
                     for D in cfg.degrees
                 }
-                if cfg.verbose:
-                    c = cells[device, dtype, n, smin, eps]
-                    line = " | ".join(
-                        f"D={D} {1e3 * c[D]['time']['median']:.2f} ms (K={c[D]['K']['median']:g})"
-                        for D in cfg.degrees
-                    )
-                    print(f"  {device}, {str(dtype).removeprefix('torch.')}, eps={eps:g}: {line}")
             if cfg.svd_reference_line:
                 for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
                     svd_cells[device, dtype, n, smin] = timing.describe(svd_samples[device, dtype])

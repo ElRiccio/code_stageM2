@@ -55,21 +55,35 @@ A few things worth knowing:
   accuracy floor: in float32 a rank-deficient run bottoms out near 1e-5, so
   `eps` there should be around 1e-4, not the default of 10 machine epsilons.
 - **SVD reference line.** `time_to_accuracy.py` can also time the exact SVD
-  sign, if you set `TimeToAccuracyConfig(svd_reference_line=True)`. Draw it
-  with `ns_core.plots.add_svd_reference_line`. It's off by default, so no SVD
+  sign, if you set `TimeToAccuracyConfig(svd_reference_line=True)` (same for
+  exp8). `ns_core.plots.plot_time_vs_degree` then draws it as a dashed line by
+  itself; pass `show_svd=False` to hide it. It's off by default, so no SVD
   is computed unless you ask.
 - **exp7 and exp8** run the CPWL operator (any profile from `ns_core/cpwl.py`,
   `"clip"` by default, same as exp6). Every internal sign call runs until it
   reaches `cfg.eps`; one that doesn't get there within `cfg.k_max` is flagged
   as not converged rather than stopping the run. exp8 can also time the exact
   SVD version as a horizontal reference line.
-- **exp7's results table** has one row per degree: the error against the
-  exact operator, the evaluation time, how many internal sign calls were
-  used, and the most steps any single call needed. The call count comes from
-  what actually ran, not from the thesis's `1 + (active positive knots)`
-  lower bound: the forms in `cpwl.py` (e.g. `clip_map`) call the sign map once
-  per knot whatever its sign, so a profile with a non-positive knot (the
-  default `clip` has one) costs one extra call.
+- **Progress vs tables.** With `verbose=True` the timing experiments only
+  print one progress line per (n, smin); all results are in tables.
+  - exp4: time, speedup over the SVD, iterations K, error, and time against
+    smin at a chosen size.
+  - exp5: time (with an SVD column if `svd_reference_line`), speedup over the
+    SVD, iterations, time per step, and the error actually reached against the
+    exact sign (mean ± std; `measure_error`, costs one extra SVD per matrix).
+  - exp7: exp4's time, speedup and smin tables, plus a results table per smin
+    with one row per degree and an SVD row (the SVD-based evaluation in the
+    same dtype, the yardstick for the error; ~1e-16 in float64). Errors are
+    against the exact float64 operator of the unrounded matrix. Columns: the
+    error, the evaluation time, how many internal sign calls were used, and
+    the most steps any single call needed.
+  - exp8: exp5's tables, read off the CPWL results (they share a layout); the
+    error is against the exact operator. Its time per step covers all internal
+    calls, so it is not a pure step cost.
+- **exp7's call count** comes from what actually ran, not from the thesis's
+  `1 + (active positive knots)` lower bound: the forms in `cpwl.py` (e.g.
+  `clip_map`) call the sign map once per knot whatever its sign, so a profile
+  with a non-positive knot (the default `clip` has one) costs one extra call.
 
 ## Setup
 

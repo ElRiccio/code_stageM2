@@ -24,7 +24,6 @@ class CPWLSvdTimingConfig:
     smins: smallest singular values to try
     degrees: degrees to compare
     devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
-    n_fixed: size used by the smin plot (must be in sizes)
     dtype: precision
     profile, alpha, beta, gamma, a, mu, knots, vals: profile choice, as in CPWLOperatorConfig
     eps: residual target for every internal sign call
@@ -37,7 +36,7 @@ class CPWLSvdTimingConfig:
     n_reps: random matrices per (n, smin)
     cpu_threads: torch threads (None = default)
     seed: RNG seed of the first matrix, then +1 each
-    verbose: print progress
+    verbose: print progress (one line per n, smin)
     Note: a sign call that misses eps is flagged, not fatal
     """
 
@@ -45,7 +44,6 @@ class CPWLSvdTimingConfig:
     smins: list[float] = field(default_factory=lambda: [1e-1, 1e-2, 1e-3, 1e-4])
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     devices: list[str] = field(default_factory=lambda: ["cpu", "cuda"])
-    n_fixed: int = 1024
     dtype: torch.dtype = torch.float32
     profile: str = "clip"
     alpha: float | None = -0.5
@@ -74,7 +72,8 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
     Returns: {"cfg", "cells": {(device, n, smin): {"svd": {"time", "error"},
     "ns": {D: {"time", "error", "calls", "K", "reached"}}}}}
     Note: time and error are {median, mean, std} over matrices (error is relative
-    Frobenius vs the exact operator); calls = mean internal sign calls, K = largest
+    Frobenius vs the exact float64 operator of the unrounded matrix, so "svd" is the
+    dtype SVD-based evaluation's own error); calls = mean internal sign calls, K = largest
     step count any call needed, reached = fraction of matrices where every call hit eps
     """
     scalar_fn, sign_form = resolve_profile(cfg)
@@ -87,9 +86,10 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
         torch.set_num_threads(cfg.cpu_threads)
     cells = {}
     try:
-        for n, smin in itertools.product(cfg.sizes, cfg.smins):
+        blocks = list(itertools.product(cfg.sizes, cfg.smins))
+        for i, (n, smin) in enumerate(blocks, 1):
             if cfg.verbose:
-                print(f"n={n} smin={smin:g}: {cfg.n_reps} matrices")
+                print(f"[{i}/{len(blocks)}] n={n} smin={smin:g} ({cfg.n_reps} matrices)")
             routes = ["svd", *cfg.degrees]
             samples = {
                 d: {r: {"time": [], "error": [], "calls": [], "K": [], "reached": []} for r in routes}
@@ -100,7 +100,7 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
                 warm = cfg.n_warmup if rep == 0 else 0
                 for device in cfg.devices:
                     M = M64.to(device=device, dtype=cfg.dtype)
-                    _, _, _, _, Y_exact = spectral_reference(M, scalar_fn)
+                    Y_exact = spectral_reference(M64.to(device), scalar_fn)[-1]
 
                     for _ in range(warm):
                         timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
@@ -145,14 +145,6 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
                         for D in cfg.degrees
                     },
                 }
-                if cfg.verbose:
-                    c = cells[device, n, smin]
-                    ns = " | ".join(
-                        f"D={D} {1e3 * c['ns'][D]['time']['median']:.2f} ms "
-                        f"(calls={c['ns'][D]['calls']:.1f}, max K={c['ns'][D]['K']})"
-                        for D in cfg.degrees
-                    )
-                    print(f"  {device}: svd {1e3 * c['svd']['time']['median']:.2f} ms | {ns}")
     finally:
         if cfg.cpu_threads is not None:
             torch.set_num_threads(threads)
@@ -163,8 +155,8 @@ def cpwl_results_table(res: dict[str, object], device: str, n: int, smin: float)
     """
     res: output of run_cpwl_svd_timing
     device, n, smin: which setting
-    Returns: nothing, prints one row per degree: error, time, sign calls, max K
-    Note: * on the time marks a cell where some call missed eps
+    Returns: nothing, prints one row per degree plus SVD: error, time, sign calls, max K
+    Note: * on the time marks a cell where some call missed eps; the SVD row is the yardstick for the error
     """
     cfg, cells = res["cfg"], res["cells"]
     cell = cells[device, n, smin]
@@ -177,6 +169,9 @@ def cpwl_results_table(res: dict[str, object], device: str, n: int, smin: float)
         rows.append(
             [f"D={D}", f"{c['error']['mean']:.2e}", f"{t:g} {cfg.time_unit}{mark}", f"{c['calls']:.1f}", str(c["K"])]
         )
+    svd = cell["svd"]
+    t = round(scale * svd["time"]["median"], cfg.time_round_digits)
+    rows.append(["SVD", f"{svd['error']['mean']:.2e}", f"{t:g} {cfg.time_unit}", "-", "-"])
     _print_table(
         f"CPWL operator ({cfg.profile}), tolerance eps = {cfg.eps:g}, mean/max over {cfg.n_reps} matrices: "
         f"{device}, n = {n}, smin = {smin:g}",

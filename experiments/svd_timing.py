@@ -22,7 +22,6 @@ class SvdTimingConfig:
     smins: smallest singular values to try
     degrees: degrees to compare
     devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
-    n_fixed: size used by the smin plot (must be in sizes)
     dtype: precision
     eps: accuracy behind K_D (None = 10 machine epsilons)
     use_tolerance: run each matrix until eps instead of a fixed K_D
@@ -34,7 +33,7 @@ class SvdTimingConfig:
     cpu_threads: torch threads (None = default)
     svd_driver: CUDA SVD driver (None = torch's choice)
     seed: RNG seed of the first matrix, then +1 each
-    verbose: print progress
+    verbose: print progress (one line per n, smin)
     Note: in tolerance mode a matrix that misses eps is flagged, not fatal, and K is the median steps run
     """
 
@@ -42,7 +41,6 @@ class SvdTimingConfig:
     smins: list[float] = field(default_factory=lambda: [1e-1, 1e-2, 1e-3, 1e-4])
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     devices: list[str] = field(default_factory=lambda: ["cpu", "cuda"])
-    n_fixed: int = 1024
     dtype: torch.dtype = torch.float32
     eps: float | None = None
     use_tolerance: bool = False
@@ -85,9 +83,10 @@ def run_svd_timing(cfg: SvdTimingConfig) -> dict[str, object]:
         torch.set_num_threads(cfg.cpu_threads)
     cells = {}
     try:
-        for n, smin in itertools.product(cfg.sizes, cfg.smins):
+        blocks = list(itertools.product(cfg.sizes, cfg.smins))
+        for i, (n, smin) in enumerate(blocks, 1):
             if cfg.verbose:
-                print(f"n={n} smin={smin:g}: {cfg.n_reps} matrices")
+                print(f"[{i}/{len(blocks)}] n={n} smin={smin:g} ({cfg.n_reps} matrices)")
             routes = ["svd", *cfg.degrees]
             samples = {
                 d: {r: {"time": [], "error": [], "K": [], "reached": []} for r in routes} for d in cfg.devices
@@ -146,13 +145,6 @@ def run_svd_timing(cfg: SvdTimingConfig) -> dict[str, object]:
                         for D in cfg.degrees
                     },
                 }
-                if cfg.verbose:
-                    c = cells[device, n, smin]
-                    ns = " | ".join(
-                        f"D={D} {1e3 * c['ns'][D]['time']['median']:.2f} ms (K={c['ns'][D]['K']})"
-                        for D in cfg.degrees
-                    )
-                    print(f"  {device}: svd {1e3 * c['svd']['time']['median']:.2f} ms | {ns}")
     finally:
         if cfg.cpu_threads is not None:
             torch.set_num_threads(threads)
@@ -194,31 +186,87 @@ def time_table(res: dict[str, object], device: str, smin: float) -> None:
     )
 
 
+def speedup_table(res: dict[str, object], device: str, smin: float) -> None:
+    """
+    res: output of run_svd_timing (or run_cpwl_svd_timing)
+    device: which device
+    smin: which smallest singular value
+    Returns: nothing, prints SVD median time / Newton-Schulz median time, one row per size, one column per degree
+    Note: above 1 means Newton-Schulz is faster
+    """
+    cfg, cells = res["cfg"], res["cells"]
+    rows = [
+        [str(n)]
+        + [
+            f"{cells[device, n, smin]['svd']['time']['median'] / cells[device, n, smin]['ns'][D]['time']['median']:.2f}x"
+            for D in cfg.degrees
+        ]
+        for n in sorted(cfg.sizes)
+    ]
+    _print_table(
+        f"speedup over the SVD (median times): {device}, smin = {smin:g}",
+        ["n"] + [f"D={D}" for D in cfg.degrees],
+        rows,
+    )
+
+
 def accuracy_table(res: dict[str, object], device: str, smin: float) -> None:
     """
     res: output of run_svd_timing
     device: which device
     smin: which smallest singular value
-    Returns: nothing, prints relative Frobenius error (mean ± std) per degree and size, plus the steps K
-    Note: in tolerance mode K gets a * if some matrix missed eps
+    Returns: nothing, prints relative Frobenius error (mean ± std), one row per degree plus SVD, one column per size
     """
     cfg, cells = res["cfg"], res["cells"]
     sizes = sorted(cfg.sizes)
     fmt = lambda s: f"{s['mean']:.2e} ± {s['std']:.1e}"
-    rows = [
-        [
-            f"D={D}",
-            str(cells[device, sizes[0], smin]["ns"][D]["K"])
-            + (
-                "" if not cfg.use_tolerance or cells[device, sizes[0], smin]["ns"][D]["reached"] == 1.0 else "*"
-            ),
-        ]
-        + [fmt(cells[device, n, smin]["ns"][D]["error"]) for n in sizes]
-        for D in cfg.degrees
-    ]
-    rows.append(["SVD", "-"] + [fmt(cells[device, n, smin]["svd"]["error"]) for n in sizes])
+    rows = [[f"D={D}"] + [fmt(cells[device, n, smin]["ns"][D]["error"]) for n in sizes] for D in cfg.degrees]
+    rows.append(["SVD"] + [fmt(cells[device, n, smin]["svd"]["error"]) for n in sizes])
     _print_table(
-        f"relative Frobenius error, mean ± std over {cfg.n_reps} matrices, and iterations run K: {device}, smin = {smin:g}",
-        ["", "K"] + [f"n={n}" for n in sizes],
+        f"relative Frobenius error, mean ± std over {cfg.n_reps} matrices: {device}, smin = {smin:g}",
+        [""] + [f"n={n}" for n in sizes],
+        rows,
+    )
+
+
+def iterations_table(res: dict[str, object], device: str, smin: float) -> None:
+    """
+    res: output of run_svd_timing (or run_cpwl_svd_timing)
+    device: which device
+    smin: which smallest singular value
+    Returns: nothing, prints the steps K, one row per size, one column per degree
+    Note: * marks a cell where some matrix missed eps (tolerance mode only); K is the median steps run, or for the CPWL operator the largest any call needed
+    """
+    cfg, cells = res["cfg"], res["cells"]
+
+    def fmt(c):
+        return str(c["K"]) + ("" if c.get("reached", 1.0) == 1.0 else "*")
+
+    rows = [[str(n)] + [fmt(cells[device, n, smin]["ns"][D]) for D in cfg.degrees] for n in sorted(cfg.sizes)]
+    _print_table(
+        f"iterations K: {device}, smin = {smin:g}",
+        ["n"] + [f"D={D}" for D in cfg.degrees],
+        rows,
+    )
+
+
+def smin_table(res: dict[str, object], device: str, n: int) -> None:
+    """
+    res: output of run_svd_timing (or run_cpwl_svd_timing)
+    device: which device
+    n: which size
+    Returns: nothing, prints time (s) as median ± std, one row per smallest singular value, one column per degree plus SVD
+    """
+    cfg, cells = res["cfg"], res["cells"]
+    fmt = lambda s: f"{s['median']:.3g} ± {s['std']:.2g}"
+    rows = [
+        [f"{smin:g}"]
+        + [fmt(cells[device, n, smin]["ns"][D]["time"]) for D in cfg.degrees]
+        + [fmt(cells[device, n, smin]["svd"]["time"])]
+        for smin in sorted(cfg.smins)
+    ]
+    _print_table(
+        f"time (s), median ± std over {cfg.n_reps} matrices: {device}, n = {n}",
+        ["smin"] + [f"D={D}" for D in cfg.degrees] + ["SVD"],
         rows,
     )

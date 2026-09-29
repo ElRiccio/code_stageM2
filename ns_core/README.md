@@ -35,8 +35,9 @@ and the spectral operators you can build from them.
   null space of a rank-deficient matrix is not amplified afterwards.
 - `plots.py` has the plotting helpers, all taking an optional axis: error
   curves, the e_{k+1} vs e_k map, rank curves, spectra, and the timing plots
-  (time vs n, vs smin, vs degree). `add_svd_reference_line` adds the exact-SVD
-  time as a dashed line.
+  (time vs n, vs smin, vs degree). The time-vs-degree plot draws the exact-SVD
+  time as a dashed line when it was timed (`show_svd=False` hides it);
+  `add_svd_reference_line` does the same on any axis.
 - `timing.py` has `time_call` (one timed call, with warm-up and CUDA sync) and
   `describe` (median, mean, std of repeated timings).
 - `cpwl.py` has the piecewise-linear profiles (clip, soft threshold, leaky

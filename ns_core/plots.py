@@ -130,16 +130,16 @@ def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
     return ax
 
 
-def plot_time_vs_smin(res: dict, device: str, ax=None):
+def plot_time_vs_smin(res: dict, device: str, n: int, ax=None):
     """
     res: output of run_svd_timing
     device: which device's timings
+    n: which size
     ax: axis to draw on
-    Returns: the axis (time vs smallest singular value at size n_fixed, K_D labelled, plus SVD)
+    Returns: the axis (time vs smallest singular value, K_D labelled, plus SVD)
     """
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
-    n = cfg.n_fixed
     smins = sorted(cfg.smins)
     colors = _colors(cfg.degrees)
     for D in sorted(cfg.degrees):
@@ -167,13 +167,16 @@ def plot_time_vs_degree(
     eps: float,
     ax=None,
     label: str | None = None,
+    show_svd: bool = True,
 ):
     """
-    res: output of run_time_to_accuracy
+    res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
     device, dtype, n, smin, eps: which setting to plot
     ax: axis to draw on
     label: legend entry, lets several settings share one axis
+    show_svd: draw the SVD time as a dashed line if it was timed
     Returns: the axis (median time vs degree, ±std bars, median K labelled)
+    Note: the SVD line needs svd_reference_line=True in the run, otherwise nothing is drawn
     """
     ax = _axis(ax)
     degrees = sorted(res["cfg"].degrees)
@@ -191,19 +194,26 @@ def plot_time_vs_degree(
     ax.set_ylabel("time to reach $\\varepsilon$ (s)")
     name = str(dtype).removeprefix("torch.")
     ax.set_title(f"{device}, {name}, $n$ = {n}, $\\sigma_{{\\min}}$ = {smin:g}, $\\varepsilon$ = {eps:g} (labels: $K$)")
+    if show_svd:
+        add_svd_reference_line(
+            ax, res, device, dtype, n, smin,
+            label="SVD" if label is None else f"SVD ({label})",
+            color="k" if label is None else line[0].get_color(),
+        )
     if label is not None:
         ax.legend(fontsize=8)
     return ax
 
 
 def add_svd_reference_line(
-    ax, res: dict, device: str, dtype: torch.dtype, n: int, smin: float, label: str = "SVD"
+    ax, res: dict, device: str, dtype: torch.dtype, n: int, smin: float, label: str = "SVD", color: str = "k"
 ):
     """
     ax: axis to draw on
     res: result dict with an "svd" entry (needs svd_reference_line=True)
     device, dtype, n, smin: which setting
     label: legend entry
+    color: line colour
     Returns: the axis
     Note: does nothing if the setting has no SVD timing
     """
@@ -211,7 +221,7 @@ def add_svd_reference_line(
     key = (device, dtype, n, smin)
     if key not in svd:
         return ax
-    ax.axhline(svd[key]["median"], color="k", ls="--", lw=1, label=label)
+    ax.axhline(svd[key]["median"], color=color, ls="--", lw=1, label=label)
     ax.legend(fontsize=8)
     return ax
 

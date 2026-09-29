@@ -1,5 +1,5 @@
-"""Convergence experiment: one matrix, the error of X_{k+1} = I_D(X_k) against
-msgn(M) for several degrees D, to read the observed order and constant."""
+"""Convergence experiment: run the iteration on one matrix for several degrees
+and record the error against the exact sign at every step."""
 
 from __future__ import annotations
 
@@ -12,9 +12,15 @@ from ns_core import orbit_tools
 
 @dataclass
 class ConvergenceConfig:
-    """Settings of the convergence experiment. `rank` follows
-    `orbit_tools.resolve_rank` (None = full rank); the nonzero singular values
-    are log-spaced in [smin, 1]. `degrees` is the only list-valued field.
+    """
+    m, n: matrix shape
+    rank: see orbit_tools.resolve_rank (None = full)
+    smin: smallest nonzero singular value
+    degrees: degrees to compare
+    k_max: steps
+    dtype: precision
+    device: cpu or cuda
+    seed: RNG seed
     """
 
     m: int = 128
@@ -29,8 +35,9 @@ class ConvergenceConfig:
 
 
 def run_convergence(cfg: ConvergenceConfig) -> dict[str, dict[int, torch.Tensor]]:
-    """Runs every degree in cfg.degrees on one matrix; returns
-    {"error": {D: e_0..e_kmax}}, the spectral-norm error against msgn(M).
+    """
+    cfg: settings
+    Returns: {"error": {D: spectral-norm error at steps 0..k_max}}
     """
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     error = {}

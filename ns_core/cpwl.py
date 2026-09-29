@@ -1,17 +1,12 @@
-"""Continuous piecewise-linear (CPWL) scalar profiles and their
-decomposition-free sign forms: matrix expressions that evaluate each profile
-spectrally from a matrix sign callable `sgn` (of type `sign_map.msgn`, exact
-or a truncated NS surrogate) and matrix products.
+"""Piecewise-linear (CPWL) profiles, and how to apply them to a matrix's spectrum
+using only a matrix sign function `sgn` and matrix products (no SVD).
 
-Two families of sign forms are provided:
-  - rectangular forms on M in R^{m x n}, acting on singular values (reference:
-    `metrics.op_svd`);
-  - symmetric forms on M in Sym^n, acting on eigenvalues (reference:
-    `metrics.op_eig`), written with the matrix absolute value
-    |A| = A msgn(A)^T.
+Two families: rectangular versions (act on singular values, check against
+`metrics.op_svd`) and symmetric versions (act on eigenvalues, check against
+`metrics.op_eig`). `sgn` can be exact or a Newton-Schulz approximation.
 
-`odd_extension` turns a profile defined on [0, infinity) into the odd map
-x -> sign(x) f(|x|), the form that reads singular values.
+`odd_extension` turns a profile on [0, infinity) into an odd one, which is what
+acts on singular values.
 """
 
 from __future__ import annotations
@@ -29,25 +24,38 @@ from ns_core.sign_map import msgn, sgn_exact
 
 
 def relu(x: torch.Tensor) -> torch.Tensor:
-    """max(x, 0).
+    """
+    x: points
+    Returns: max(x, 0)
     """
     return torch.clamp(x, min=0.0)
 
 
 def leaky_relu(x: torch.Tensor, a: float) -> torch.Tensor:
-    """max(x, a x) for a slope a < 1.
+    """
+    x: points
+    a: negative-side slope (< 1)
+    Returns: leaky ReLU of x
     """
     return torch.maximum(x, a * x)
 
 
 def capped_leaky_relu(x: torch.Tensor, a: float, beta: float) -> torch.Tensor:
-    """min(leaky_relu(x, a), beta) for a < 1 and a cap beta > 0.
+    """
+    x: points
+    a: negative-side slope (< 1)
+    beta: cap (> 0)
+    Returns: leaky ReLU of x, capped at beta
     """
     return torch.clamp(leaky_relu(x, a), max=beta)
 
 
 def clip(x: torch.Tensor, alpha: float, beta: float) -> torch.Tensor:
-    """x clipped onto [alpha, beta], alpha < beta.
+    """
+    x: points
+    alpha: lower bound
+    beta: upper bound (> alpha)
+    Returns: x clipped to [alpha, beta]
     """
     if not alpha < beta:
         raise ValueError("require alpha < beta")
@@ -55,7 +63,10 @@ def clip(x: torch.Tensor, alpha: float, beta: float) -> torch.Tensor:
 
 
 def soft_threshold(x: torch.Tensor, gamma: float) -> torch.Tensor:
-    """sign(x) max(|x| - gamma, 0) for a threshold gamma > 0.
+    """
+    x: points
+    gamma: threshold (> 0)
+    Returns: x shrunk toward 0 by gamma
     """
     if gamma <= 0.0:
         raise ValueError("require gamma > 0")
@@ -63,15 +74,20 @@ def soft_threshold(x: torch.Tensor, gamma: float) -> torch.Tensor:
 
 
 def leaky_clip(x: torch.Tensor, a: float, mu: float) -> torch.Tensor:
-    """a x + (1 - a)/2 (|x + mu| - |x - mu|), an odd map.
+    """
+    x: points
+    a: outer slope
+    mu: half-width of the steep middle
+    Returns: odd leaky clip of x
     """
     return a * x + 0.5 * (1.0 - a) * (torch.abs(x + mu) - torch.abs(x - mu))
 
 
 def odd_extension(f: Callable[[torch.Tensor], torch.Tensor]) -> Callable[[torch.Tensor], torch.Tensor]:
-    """The odd extension x -> sign(x) f(|x|) of a profile f on [0, infinity).
-    It vanishes at the origin for any f(0), so zero singular values map to
-    zero.
+    """
+    f: profile on [0, infinity)
+    Returns: odd version of f, sign(x) f(|x|)
+    Note: always 0 at 0, whatever f(0) is
     """
 
     def g(x: torch.Tensor) -> torch.Tensor:
@@ -81,12 +97,13 @@ def odd_extension(f: Callable[[torch.Tensor], torch.Tensor]) -> Callable[[torch.
 
 
 class PiecewiseLinearProfile:
-    """A linear spline on a partition, with its ReLU and sign representations.
+    """A piecewise-linear function through given points, in ReLU and sign form.
 
-    Built from strictly increasing `knots` and values `vals` at the knots,
-    stored in float64. Attributes: `knots`, `vals`, `c` (per-cell slopes),
-    `w` (slope jumps at the interior knots), `interior` (interior knots) and
-    the scalars `eta`, `theta`, `kappa` of the sign representation.
+    knots: increasing breakpoints
+    vals: function value at each knot
+    Attributes: c (slope per cell), w (slope jump per interior knot),
+    interior (interior knots), eta, theta, kappa (constants of the two forms)
+    Note: stored in float64
     """
 
     def __init__(self, knots: torch.Tensor, vals: torch.Tensor):
@@ -110,7 +127,9 @@ class PiecewiseLinearProfile:
         self.kappa = float(self.eta - 0.5 * torch.sum(self.w * self.interior))
 
     def eval_relu_form(self, x: torch.Tensor) -> torch.Tensor:
-        """eta + c[0] x + sum_i w_i ReLU(x - interior_i).
+        """
+        x: points
+        Returns: profile value, via ReLUs
         """
         out = self.eta + float(self.c[0]) * x
         for wi, xi in zip(self.w.tolist(), self.interior.tolist()):
@@ -118,8 +137,10 @@ class PiecewiseLinearProfile:
         return out
 
     def eval_sign_form(self, x: torch.Tensor, sgn) -> torch.Tensor:
-        """kappa + theta x + sum_i (w_i / 2) (x - interior_i) sgn(x - interior_i),
-        the form that lifts to matrices in `spline_map_sign`.
+        """
+        x: points
+        sgn: scalar sign function
+        Returns: profile value, via signs (the form spline_map_sign lifts)
         """
         out = self.kappa + self.theta * x
         for wi, xi in zip(self.w.tolist(), self.interior.tolist()):
@@ -134,9 +155,14 @@ class PiecewiseLinearProfile:
 
 
 def clip_map(M: torch.Tensor, alpha: float, beta: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """(1/2) [(alpha + beta) I + M_a msgn(M_a)^T - M_b msgn(M_b)^T] msgn(M),
-    with M_a = alpha msgn(M) - M and M_b = beta msgn(M) - M. `N` is an
-    optional precomputed msgn(M).
+    """
+    M: input matrix
+    alpha: lower bound
+    beta: upper bound (> alpha)
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: M with its singular values clipped to [alpha, beta]
+    Note: calls sgn on every shifted matrix, even for non-positive bounds
     """
     if not alpha < beta:
         raise ValueError("require alpha < beta")
@@ -150,8 +176,12 @@ def clip_map(M: torch.Tensor, alpha: float, beta: float, sgn: msgn, N: torch.Ten
 
 
 def hinge_map(M: torch.Tensor, mu: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """(1/2) [M_mu msgn(M_mu)^T msgn(M) - M_mu] with M_mu = mu msgn(M) - M:
-    the matrix hinge at threshold mu. `N` is an optional precomputed msgn(M).
+    """
+    M: input matrix
+    mu: hinge position
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: matrix hinge of M at mu
     """
     if N is None:
         N = sgn(M)
@@ -160,7 +190,12 @@ def hinge_map(M: torch.Tensor, mu: float, sgn: msgn, N: torch.Tensor | None = No
 
 
 def hinge_map_neg(M: torch.Tensor, mu: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """M - mu msgn(M): the closed form of the hinge at a threshold mu <= 0.
+    """
+    M: input matrix
+    mu: hinge position (<= 0)
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: matrix hinge of M at mu, closed form
     """
     if mu > 0.0:
         raise ValueError("the closed form is valid for mu <= 0 only")
@@ -170,7 +205,12 @@ def hinge_map_neg(M: torch.Tensor, mu: float, sgn: msgn, N: torch.Tensor | None 
 
 
 def soft_map(M: torch.Tensor, gamma: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """Matrix soft-thresholding at gamma > 0, i.e. hinge_map(M, gamma, sgn, N).
+    """
+    M: input matrix
+    gamma: threshold (> 0)
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: M with singular values soft-thresholded (same as hinge_map at gamma)
     """
     if gamma <= 0.0:
         raise ValueError("require gamma > 0")
@@ -178,8 +218,12 @@ def soft_map(M: torch.Tensor, gamma: float, sgn: msgn, N: torch.Tensor | None = 
 
 
 def spline_map(M: torch.Tensor, spline: PiecewiseLinearProfile, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """eta msgn(M) + c[0] M + sum_i w_i hinge_map(M, interior_i, sgn, N): the
-    ReLU-form lift of a PiecewiseLinearProfile.
+    """
+    M: input matrix
+    spline: profile to apply
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: profile applied to M's singular values, via the ReLU form
     """
     if N is None:
         N = sgn(M)
@@ -190,9 +234,12 @@ def spline_map(M: torch.Tensor, spline: PiecewiseLinearProfile, sgn: msgn, N: to
 
 
 def spline_map_sign(M: torch.Tensor, spline: PiecewiseLinearProfile, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """kappa msgn(M) + theta M + sum_i (w_i / 2) M_i msgn(M_i)^T msgn(M) with
-    M_i = interior_i msgn(M) - M: the sign-form lift of a
-    PiecewiseLinearProfile.
+    """
+    M: input matrix
+    spline: profile to apply
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: profile applied to M's singular values, via the sign form
     """
     if N is None:
         N = sgn(M)
@@ -204,8 +251,12 @@ def spline_map_sign(M: torch.Tensor, spline: PiecewiseLinearProfile, sgn: msgn, 
 
 
 def matrix_modulus(M: torch.Tensor, mu: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """Mod_mu(M) = S_mu msgn(S_mu)^T msgn(M) with S_mu = mu msgn(M) - M, the
-    building block of the leaky and capped-leaky forms.
+    """
+    M: input matrix
+    mu: position
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: matrix modulus of M at mu (building block of the leaky forms)
     """
     if N is None:
         N = sgn(M)
@@ -214,14 +265,22 @@ def matrix_modulus(M: torch.Tensor, mu: float, sgn: msgn, N: torch.Tensor | None
 
 
 def leaky_relu_map(M: torch.Tensor, a: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """The leaky ReLU on R^{m x n}: the sign form reduces to the identity, so
-    this returns M.
+    """
+    M: input matrix
+    a, sgn, N: unused, kept so all maps share one signature
+    Returns: M itself (leaky ReLU is the identity on singular values)
     """
     return M
 
 
 def capped_leaky_relu_map(M: torch.Tensor, a: float, beta: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """(1/2) [beta msgn(M) + M - matrix_modulus(M, beta, sgn, N)].
+    """
+    M: input matrix
+    a: negative-side slope (unused here)
+    beta: cap
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: M with singular values leaky-ReLU'd and capped at beta
     """
     if N is None:
         N = sgn(M)
@@ -229,7 +288,13 @@ def capped_leaky_relu_map(M: torch.Tensor, a: float, beta: float, sgn: msgn, N: 
 
 
 def leaky_clip_map(M: torch.Tensor, a: float, mu: float, sgn: msgn, N: torch.Tensor | None = None) -> torch.Tensor:
-    """a M + (1 - a)/2 [M + mu msgn(M) - matrix_modulus(M, mu, sgn, N)].
+    """
+    M: input matrix
+    a: outer slope
+    mu: half-width of the steep middle
+    sgn: matrix sign function
+    N: precomputed sgn(M)
+    Returns: M with singular values passed through the leaky clip
     """
     if N is None:
         N = sgn(M)
@@ -242,41 +307,66 @@ def leaky_clip_map(M: torch.Tensor, a: float, mu: float, sgn: msgn, N: torch.Ten
 
 
 def matrix_abs(A: torch.Tensor, sgn: msgn) -> torch.Tensor:
-    """|A| = A msgn(A)^T for symmetric A, the building block of the symmetric
-    forms.
+    """
+    A: symmetric matrix
+    sgn: matrix sign function
+    Returns: matrix absolute value |A|
     """
     return A @ sgn(A).mH
 
 
 def clip_map_sym(M: torch.Tensor, alpha: float, beta: float, sgn: msgn) -> torch.Tensor:
-    """(1/2) [(alpha + beta) I + |M - alpha I| - |M - beta I|].
+    """
+    M: symmetric matrix
+    alpha: lower bound
+    beta: upper bound
+    sgn: matrix sign function
+    Returns: M with eigenvalues clipped to [alpha, beta]
     """
     I = torch.eye(M.shape[0], dtype=M.dtype, device=M.device)
     return 0.5 * ((alpha + beta) * I + matrix_abs(M - alpha * I, sgn) - matrix_abs(M - beta * I, sgn))
 
 
 def soft_map_sym(M: torch.Tensor, gamma: float, sgn: msgn) -> torch.Tensor:
-    """M + (1/2) [|M - gamma I| - |M + gamma I|].
+    """
+    M: symmetric matrix
+    gamma: threshold
+    sgn: matrix sign function
+    Returns: M with eigenvalues soft-thresholded
     """
     I = torch.eye(M.shape[0], dtype=M.dtype, device=M.device)
     return M + 0.5 * (matrix_abs(M - gamma * I, sgn) - matrix_abs(M + gamma * I, sgn))
 
 
 def leaky_relu_map_sym(M: torch.Tensor, a: float, sgn: msgn) -> torch.Tensor:
-    """(1/2) [(1 + a) M + (1 - a) |M|].
+    """
+    M: symmetric matrix
+    a: negative-side slope
+    sgn: matrix sign function
+    Returns: M with eigenvalues leaky-ReLU'd
     """
     return 0.5 * ((1.0 + a) * M + (1.0 - a) * matrix_abs(M, sgn))
 
 
 def capped_leaky_relu_map_sym(M: torch.Tensor, a: float, beta: float, sgn: msgn) -> torch.Tensor:
-    """(1/2) [beta I + a M + (1 - a) |M| - |M - beta I|].
+    """
+    M: symmetric matrix
+    a: negative-side slope
+    beta: cap
+    sgn: matrix sign function
+    Returns: M with eigenvalues leaky-ReLU'd and capped at beta
     """
     I = torch.eye(M.shape[0], dtype=M.dtype, device=M.device)
     return 0.5 * (beta * I + a * M + (1.0 - a) * matrix_abs(M, sgn) - matrix_abs(M - beta * I, sgn))
 
 
 def leaky_clip_map_sym(M: torch.Tensor, a: float, mu: float, sgn: msgn) -> torch.Tensor:
-    """a M + (1 - a)/2 [|M + mu I| - |M - mu I|].
+    """
+    M: symmetric matrix
+    a: outer slope
+    mu: half-width of the steep middle
+    sgn: matrix sign function
+    Returns: M with eigenvalues passed through the leaky clip
     """
     I = torch.eye(M.shape[0], dtype=M.dtype, device=M.device)
     return a * M + 0.5 * (1.0 - a) * (matrix_abs(M + mu * I, sgn) - matrix_abs(M - mu * I, sgn))

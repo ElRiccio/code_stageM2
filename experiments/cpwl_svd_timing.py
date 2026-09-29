@@ -1,9 +1,9 @@
-"""SVD timing experiment for the CPWL spectral operator (exp4, applied to the
-CPWL profile studied in exp6): wall-clock time of the decomposition-free CPWL
-operator, with every internal matrix-sign call run to a residual tolerance
-instead of a fixed iteration count, against the same operator evaluated
-exactly through a signed SVD. Every repetition uses a new random matrix of
-the same size and sigma_min, mirroring `experiments.svd_timing`."""
+"""SVD timing for the CPWL operator (exp4's protocol applied to exp6's operator):
+how long the SVD-free operator takes compared with evaluating it through an
+SVD. Every internal sign call runs to a residual tolerance, not a fixed count.
+
+Same random matrices as `experiments.svd_timing`.
+"""
 
 from __future__ import annotations
 
@@ -19,25 +19,26 @@ from ns_core import metrics, orbit_tools, sign_map, timing
 
 @dataclass
 class CPWLSvdTimingConfig:
-    """Settings of the CPWL-operator SVD timing experiment. Square n x n
-    matrices with log-spaced singular values in [smin, 1], the same sweep as
-    `SvdTimingConfig`. `profile` and its parameters (`alpha`, `beta`,
-    `gamma`, `a`, `mu`, `knots`, `vals`) select the CPWL map exactly as in
-    `CPWLOperatorConfig` (`resolve_profile` reads them off this config
-    directly); the defaults reproduce exp6's "clip" profile. `eps` is the
-    residual tolerance every internal Newton-Schulz sign call
-    (`sign_map.sgn_ns_until`) is run to; `k_max` caps its iterations, and a
-    call that does not reach `eps` within `k_max` is flagged as not
-    converged rather than stopping the run. `n_reps` is the number of
-    independent random matrices per (n, smin), seeded `seed`, `seed` + 1,
-    ...; each route is timed once on each, with the `n_warmup` untimed
-    warm-up calls made on the first matrix only. `n_fixed` is the size read
-    by the sigma_min plot and must be in `sizes`. `power_iters` and
-    `power_margin` set the pre-scaling of every internal sign call.
-    `time_unit` ("ms" or "s") and `time_round_digits` control the rounding
-    of the time column of `cpwl_results_table`. `cpu_threads` None keeps the
-    torch default. Devices must be available on the machine, e.g. ["cpu"]
-    without a GPU.
+    """
+    sizes: matrix sizes n (square)
+    smins: smallest singular values to try
+    degrees: degrees to compare
+    devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
+    n_fixed: size used by the smin plot (must be in sizes)
+    dtype: precision
+    profile, alpha, beta, gamma, a, mu, knots, vals: profile choice, as in CPWLOperatorConfig
+    eps: residual target for every internal sign call
+    k_max: step cap per sign call
+    power_iters: norm-estimate steps
+    power_margin: norm safety factor
+    time_unit: "ms" or "s" in the results table
+    time_round_digits: decimals of the table time
+    n_warmup: untimed calls, first matrix only
+    n_reps: random matrices per (n, smin)
+    cpu_threads: torch threads (None = default)
+    seed: RNG seed of the first matrix, then +1 each
+    verbose: print progress
+    Note: a sign call that misses eps is flagged, not fatal
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -68,24 +69,13 @@ class CPWLSvdTimingConfig:
 
 
 def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
-    """Times the SVD-based and the tolerance-stopped decomposition-free CPWL
-    operator (`cfg.profile`'s sign form) on the same input, for every
-    (device, size, smin), over `cfg.n_reps` random matrices. Each matrix is
-    built once in float64 on the CPU, with the exact CPWL reference read off
-    a signed SVD (`cpwl_operator.spectral_reference`), and moved to each
-    device in `cfg.dtype`. The SVD route evaluates the sign form with
-    `sign_map.sgn_svd`; the tolerance route evaluates it with
-    `sign_map.make_sgn_ns_until`, every internal sign call run until it
-    reaches `cfg.eps` or `cfg.k_max`. Returns {"cfg": cfg, "cells": {(device,
-    n, smin): {"svd": {"time": s, "error": e}, "ns": {D: {"time": s,
-    "error": e, "calls": c, "K": k, "reached": f}}}}}, where s and e are
-    {"median", "mean", "std"} over the matrices (s in seconds, e the
-    relative Frobenius error against the exact CPWL operator), c is the mean
-    number of internal sign calls used to build the operator, k is the
-    largest iteration count any internal sign call needed over all matrices,
-    and f is the fraction of matrices for which every internal call reached
-    `cfg.eps` within `cfg.k_max`. Usage:
-    run_cpwl_svd_timing(CPWLSvdTimingConfig(sizes=[512], smins=[1e-2])).
+    """
+    cfg: settings
+    Returns: {"cfg", "cells": {(device, n, smin): {"svd": {"time", "error"},
+    "ns": {D: {"time", "error", "calls", "K", "reached"}}}}}
+    Note: time and error are {median, mean, std} over matrices (error is relative
+    Frobenius vs the exact operator); calls = mean internal sign calls, K = largest
+    step count any call needed, reached = fraction of matrices where every call hit eps
     """
     scalar_fn, sign_form = resolve_profile(cfg)
     generators = {}
@@ -170,15 +160,11 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
 
 
 def cpwl_results_table(res: dict[str, object], device: str, n: int, smin: float) -> None:
-    """Prints the results table for the tolerance-stopped CPWL operator at
-    one (device, size, smin): one row per degree D, with the relative
-    Frobenius error against the exact CPWL operator, the evaluation time
-    (rounded per `cfg.time_unit` and `cfg.time_round_digits`, a trailing *
-    marking a cell where some matrix did not reach `cfg.eps` within
-    `cfg.k_max`), the mean number of internal sign-map calls used to build
-    the operator, and the largest iteration count any of those calls needed.
-    `res` is the output of `run_cpwl_svd_timing`. Usage:
-    cpwl_results_table(res, "cpu", 512, 1e-2).
+    """
+    res: output of run_cpwl_svd_timing
+    device, n, smin: which setting
+    Returns: nothing, prints one row per degree: error, time, sign calls, max K
+    Note: * on the time marks a cell where some call missed eps
     """
     cfg, cells = res["cfg"], res["cells"]
     cell = cells[device, n, smin]

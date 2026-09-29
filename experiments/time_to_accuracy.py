@@ -1,9 +1,9 @@
-"""Time-to-accuracy experiment: wall-clock time of the decomposition-free msgn
-(generalized Newton-Schulz with the bpoly(D) profile) until an SVD-free
-residual reaches a target accuracy eps, over matrix size, sigma_min, device,
-precision and degree D, with an optional horizontal reference line for the
-exact SVD-based evaluation time. Every repetition uses a new random matrix of
-the same size and sigma_min, the same matrices as the SVD timing experiment."""
+"""Time-to-accuracy experiment: how long the Newton-Schulz sign takes to reach a
+target accuracy, across size, smallest singular value, device, precision and
+degree. Can also time the exact SVD sign as a reference.
+
+Uses the same random matrices as the SVD timing experiment.
+"""
 
 from __future__ import annotations
 
@@ -18,24 +18,25 @@ from ns_core import matrices, orbit_tools, sign_map, timing
 
 @dataclass
 class TimeToAccuracyConfig:
-    """Settings of the time-to-accuracy experiment. Square n x n full-rank
-    matrices with log-spaced singular values in [smin, 1]. `n_reps` is the
-    number of independent random matrices per (n, smin), seeded `seed`,
-    `seed` + 1, ...; each (device, dtype, eps, D) is timed once on each. The
-    `n_warmup` untimed warm-up calls are made on the first matrix only. `eps`
-    lists the target accuracies: a run stops once ||I - X^H X||_F / sqrt(n) <=
-    eps, an upper bound on the relative Frobenius error against the exact
-    msgn. `k_max` caps the iterations; a run that hits it is flagged as not
-    reached, so targets below the rounding level of a dtype (about 1e-6 in
-    float32) should not be requested for it. `power_iters` and `power_margin`
-    set the pre-scaling: the scale is `power_margin` times the power-iteration
-    estimate of sigma_max. `svd_reference_line` toggles timing the exact
-    SVD-based msgn once per (device, dtype, n, smin), independent of eps and
-    D, for a horizontal reference line on the time-vs-degree plot; when False
-    (the default) that timing is skipped and the returned "svd" entry is
-    empty. `cpu_threads` None keeps the torch default. Devices must be
-    available on the machine, e.g. ["cpu"] without a GPU. The timed region
-    holds the pre-scaling and the iteration with its residual check.
+    """
+    sizes: matrix sizes n (square, full rank)
+    smins: smallest singular values to try
+    degrees: degrees to compare
+    devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
+    dtypes: precisions to try
+    eps: target accuracies
+    k_max: step cap
+    svd_reference_line: also time the exact SVD sign
+    power_iters: norm-estimate steps
+    power_margin: norm safety factor
+    n_warmup: untimed calls, first matrix only
+    n_reps: random matrices per (n, smin)
+    cpu_threads: torch threads (None = default)
+    seed: RNG seed of the first matrix, then +1 each
+    verbose: print progress
+    Note: a run stops when the residual is below eps (bounds the relative Frobenius
+    error); hitting k_max is flagged, and eps below rounding level (~1e-6 in float32)
+    will not be reached; timing includes pre-scaling and the residual check
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -56,17 +57,12 @@ class TimeToAccuracyConfig:
 
 
 def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
-    """Times the Newton-Schulz msgn stopped at each target in cfg.eps, for
-    every (device, dtype, size, smin, eps, D), over cfg.n_reps random
-    matrices. Each matrix is built once in float64 on the CPU, without any
-    decomposition, and moved to each device in each dtype. With
-    `cfg.svd_reference_line`, `sign_map.sgn_svd` is also timed once per
-    (device, dtype, n, smin). Returns {"cfg": cfg, "cells": {(device, dtype,
-    n, smin, eps): {D: {"time": t, "K": k, "reached": f}}}, "svd": {(device,
-    dtype, n, smin): time stats}}, where t and k are {"median", "mean",
-    "std"} over the matrices (t in seconds, k the number of iterations run)
-    and f is the fraction of matrices that reached eps within cfg.k_max;
-    "svd" is empty unless `cfg.svd_reference_line` is True.
+    """
+    cfg: settings
+    Returns: {"cfg", "cells": {(device, dtype, n, smin, eps): {D: {"time", "K", "reached"}}},
+    "svd": {(device, dtype, n, smin): time stats}}
+    Note: time and K are {median, mean, std} over matrices; reached is the fraction
+    that hit eps within k_max; "svd" is empty unless svd_reference_line is on
     """
     generators = {}
     for device in cfg.devices:
@@ -134,10 +130,11 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
 def time_to_accuracy_table(
     res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float
 ) -> None:
-    """Prints the time in seconds to reach eps, "median ± std" over the random
-    matrices, for one device, dtype and smin: one row per size, one column per
-    D. A trailing * marks a cell where some matrix did not reach eps within
-    cfg.k_max. `res` is the output of `run_time_to_accuracy`.
+    """
+    res: output of run_time_to_accuracy
+    device, dtype, smin, eps: which setting
+    Returns: nothing, prints time (s) as median ± std, one row per size, one column per degree
+    Note: * marks a cell where some matrix missed eps
     """
     cfg, cells = res["cfg"], res["cells"]
 
@@ -159,9 +156,10 @@ def time_to_accuracy_table(
 def iterations_table(
     res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float
 ) -> None:
-    """Prints the number of iterations K run to reach eps, "median (mean)"
-    over the random matrices, for one device, dtype and smin: one row per size,
-    one column per D. `res` is the output of `run_time_to_accuracy`.
+    """
+    res: output of run_time_to_accuracy
+    device, dtype, smin, eps: which setting
+    Returns: nothing, prints steps K as median (mean), one row per size, one column per degree
     """
     cfg, cells = res["cfg"], res["cells"]
     fmt = lambda c: f"{c['K']['median']:g} ({c['K']['mean']:.2f})"

@@ -1,12 +1,11 @@
-"""CPWL time-to-accuracy experiment (exp5, applied to the CPWL profile
-studied in exp6): wall-clock time of the decomposition-free CPWL spectral
-operator, evaluated through the tolerance-stopped Newton-Schulz sign map,
-until every internal sign call reaches a target eps, over matrix size,
-sigma_min, device, precision and degree D. An optional horizontal reference
-line, the exact SVD-based evaluation time of the same CPWL operator, can be
-timed alongside and drawn on the time-vs-degree plot. Mirrors
-`experiments.time_to_accuracy`, applied to the CPWL operator of
-`experiments.cpwl_operator` instead of the raw sign map."""
+"""Time-to-accuracy for the CPWL operator (exp5's protocol applied to exp6's
+operator): how long the SVD-free operator takes until every internal sign call
+reaches a target accuracy. Can also time the SVD-based operator as a reference
+line.
+
+Mirrors `experiments.time_to_accuracy`, with the CPWL operator in place of the
+raw sign map.
+"""
 
 from __future__ import annotations
 
@@ -21,20 +20,18 @@ from ns_core import matrices, orbit_tools, sign_map, timing
 
 @dataclass
 class CPWLTimeToAccuracyConfig:
-    """Settings of the CPWL time-to-accuracy experiment. Square n x n
-    full-rank matrices with log-spaced singular values in [smin, 1], the
-    same sweep as `TimeToAccuracyConfig`. `profile` and its parameters
-    (`alpha`, `beta`, `gamma`, `a`, `mu`, `knots`, `vals`) select the CPWL
-    map exactly as in `CPWLOperatorConfig`; the defaults reproduce exp6's
-    "clip" profile. `eps` lists the tolerances every internal Newton-Schulz
-    sign call (`sign_map.sgn_ns_until`) is run to; `k_max` caps its
-    iterations, and a call that does not reach its target within `k_max` is
-    flagged as not reached rather than stopping the run. `svd_reference_line`
-    toggles timing the exact SVD-based CPWL operator once per (device,
-    dtype, n, smin), independent of eps and D, for a horizontal line on the
-    time-vs-degree plot; when False that timing is skipped. `n_reps`,
-    `n_warmup`, `power_iters`, `power_margin` and `cpu_threads` are as in
-    `TimeToAccuracyConfig`.
+    """
+    sizes: matrix sizes n (square, full rank)
+    smins: smallest singular values to try
+    degrees: degrees to compare
+    devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
+    dtypes: precisions to try
+    profile, alpha, beta, gamma, a, mu, knots, vals: profile choice, as in CPWLOperatorConfig
+    eps: target accuracies for every internal sign call
+    k_max: step cap per sign call
+    svd_reference_line: also time the SVD-based operator
+    power_iters, power_margin, n_warmup, n_reps, cpu_threads, seed, verbose: as in TimeToAccuracyConfig
+    Note: a sign call that misses its target is flagged, not fatal
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -63,21 +60,13 @@ class CPWLTimeToAccuracyConfig:
 
 
 def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object]:
-    """Times the tolerance-stopped decomposition-free CPWL operator
-    (`cfg.profile`'s sign form, evaluated with `sign_map.make_sgn_ns_until`)
-    for every (device, dtype, size, smin, eps, D), over `cfg.n_reps` random
-    matrices. Each matrix is built once in float64 on the CPU, without any
-    decomposition, and moved to each device in each dtype. With
-    `cfg.svd_reference_line`, the same operator evaluated exactly through
-    `sign_map.sgn_svd` is additionally timed once per (device, dtype, n,
-    smin). Returns {"cfg": cfg, "cells": {(device, dtype, n, smin, eps): {D:
-    {"time": t, "K": k, "reached": f}}}, "svd": {(device, dtype, n, smin):
-    time stats}}, where t and k are {"median", "mean", "std"} over the
-    matrices (t in seconds, k the largest iteration count any internal sign
-    call needed for that matrix) and f is the fraction of matrices for which
-    every internal call reached its target within `cfg.k_max`; "svd" is
-    empty unless `cfg.svd_reference_line` is True. Usage:
-    run_cpwl_time_to_accuracy(CPWLTimeToAccuracyConfig(sizes=[512], smins=[1e-2])).
+    """
+    cfg: settings
+    Returns: {"cfg", "cells": {(device, dtype, n, smin, eps): {D: {"time", "K", "reached"}}},
+    "svd": {(device, dtype, n, smin): time stats}}
+    Note: time and K are {median, mean, std} over matrices; K = largest step count any
+    internal call needed; reached = fraction of matrices where every call hit its target;
+    "svd" is empty unless svd_reference_line is on
     """
     scalar_fn, sign_form = resolve_profile(cfg)
     generators = {}

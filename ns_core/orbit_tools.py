@@ -1,11 +1,9 @@
-"""Helpers shared by the convergence experiments: the test instance with an
-exactly prescribed spectrum, the orbit of the iteration under test, and its
-measurements against msgn(M).
+"""Shared helpers for the convergence experiments: build a test matrix with a
+known spectrum, run the iteration on it, and measure the errors.
 
-The instance is built (and its reference sign computed with an SVD) in
-float64 on the test side; the iteration itself runs in the requested dtype
-and uses matrix products only. Measurements are taken in float64, so the
-accuracy floor seen in a curve is the iteration's, not the reference's.
+The test matrix and its exact sign are built in float64. The iteration runs in
+the requested dtype and errors are measured back in float64, so any accuracy
+floor in a curve comes from the iteration, not the reference.
 """
 
 from __future__ import annotations
@@ -18,8 +16,10 @@ from ns_core import matrices, metrics, ns_iteration, sign_map
 
 
 def resolve_rank(m: int, n: int, rank: int | None) -> int:
-    """Rank of the test matrix: None gives min(m, n), a value <= 0 counts
-    down from min(m, n) (-1 is min(m, n) - 1), a positive value is kept.
+    """
+    m, n: shape
+    rank: None = full, <= 0 counts down from full, > 0 kept
+    Returns: actual rank
     """
     r = min(m, n)
     if rank is None:
@@ -38,7 +38,11 @@ def log_spectrum(
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> torch.Tensor:
-    """r singular values log-spaced from 1 down to smin (just [1] if r = 1).
+    """
+    r: how many values
+    smin: smallest value
+    dtype, device: output type and place
+    Returns: log-spaced values from 1 down to smin
     """
     return torch.logspace(0.0, math.log10(smin), r, dtype=dtype, device=device)
 
@@ -52,9 +56,13 @@ def make_instance(
     *,
     device: torch.device | str = "cpu",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """(M, N): an m x n float64 matrix of the given rank whose nonzero
-    singular values are log-spaced in [smin, 1], and N = msgn(M) from the
-    exact SVD. `rank` follows `resolve_rank`.
+    """
+    m, n: shape
+    rank: see resolve_rank
+    smin: smallest nonzero singular value
+    seed: RNG seed
+    device: where to build it
+    Returns: matrix M, its exact sign N
     """
     r = resolve_rank(m, n, rank)
     g = torch.Generator(device=device)
@@ -67,10 +75,9 @@ def make_instance(
 
 
 def default_tol(dtype: torch.dtype) -> float:
-    """Default stopping tolerance on the step ||X_{k+1} - X_k||_F: the square
-    root of the machine epsilon of `dtype`. With convergence of order two or
-    more, the iterate after such a step is already at rounding level, so
-    stopping there keeps the null space from amplifying rounding noise.
+    """
+    dtype: working precision
+    Returns: default early-stop tolerance (sqrt of machine epsilon)
     """
     return math.sqrt(torch.finfo(dtype).eps)
 
@@ -82,31 +89,42 @@ def run_orbit(
     dtype: torch.dtype,
     tol: float | None = None,
 ) -> list[torch.Tensor]:
-    """Iterates X_0, ..., X_{k_max} of degree D started from M (whose largest
-    singular value is 1, so no rescaling), run in `dtype` and returned in
-    float64. With `tol`, iteration stops once ||X_{k+1} - X_k||_F < tol and
-    the last iterate is repeated.
+    """
+    M: input matrix (largest singular value 1)
+    D: degree
+    k_max: steps
+    dtype: precision to run in
+    tol: early stop when a step changes less than this
+    Returns: list of k_max + 1 iterates, in float64
     """
     orbit = ns_iteration.ns_orbit_matrix(M.to(dtype), D, k_max, scale=1.0, tol=tol)
     return [X.to(torch.float64) for X in orbit]
 
 
 def orbit_errors(orbit: list[torch.Tensor], N: torch.Tensor) -> torch.Tensor:
-    """Spectral-norm errors ||X_k - N||_2 along an orbit, shape (K + 1,).
+    """
+    orbit: iterates
+    N: exact sign
+    Returns: spectral-norm error per iterate
     """
     return torch.stack([metrics.spectral_error(X, N) for X in orbit])
 
 
 def orbit_ranks(orbit: list[torch.Tensor], tol: float) -> torch.Tensor:
-    """Numerical rank of every iterate, shape (K + 1,): the number of singular
-    values above tol * sigma_max.
+    """
+    orbit: iterates
+    tol: cutoff relative to largest singular value
+    Returns: numerical rank per iterate
     """
     sv = torch.stack([torch.linalg.svdvals(X) for X in orbit])
     return (sv > tol * sv[:, :1]).sum(dim=1)
 
 
 def first_hit(err: torch.Tensor, eps: float) -> int | None:
-    """First index k with err[k] <= eps, or None if the curve never gets there.
+    """
+    err: error curve
+    eps: target
+    Returns: first index at or below eps, None if never
     """
     hits = (err <= eps).nonzero()
     return int(hits[0]) if hits.numel() else None
@@ -115,9 +133,10 @@ def first_hit(err: torch.Tensor, eps: float) -> int | None:
 def report_iterations(
     iterations: dict[int, int | None], predicted: dict[int, int] | None = None
 ) -> None:
-    """Prints, for each D, the first iteration at which the error is at or
-    below eps (as returned in res["iterations"]), with the predicted K_D
-    alongside if given.
+    """
+    iterations: first hit per degree (res["iterations"])
+    predicted: K_D per degree, shown alongside
+    Returns: nothing, prints one line per degree
     """
     for D in sorted(iterations):
         k = iterations[D]

@@ -1,15 +1,8 @@
-"""The Bjorck-Bowie polynomial family p_D(x) = x B_D(1 - x^2) and the associated
-Newton-Schulz recursion, on the scalar line and on matrices.
+"""The Newton-Schulz iteration: the odd polynomial p_D, and its repeated
+application to numbers (scalar side) and to matrices (matrix side).
 
-Scalar side: coefficients of p_D, its evaluation in the residual variable
-t = 1 - x^2, orbits u_{k+1} = p_D(u_k), the log10 error orbit and the
-asymptotic error constant.
-Matrix side: one step of the odd matrix polynomial and the orbit
-X_{k+1} = Phi(X_k) started from a rescaled M.
-
-Orbit functions take either the degree D of p_D or a coefficient tensor
-`coeffs` = a[0..D] of any odd polynomial sum_j a[j] x^(2j+1), such as the
-tensors from `profiles.quintic_coeffs`.
+Orbit functions take either a degree D or a coefficient tensor `coeffs` for any
+odd polynomial, e.g. the quintics from `profiles.quintic_coeffs`.
 """
 
 from __future__ import annotations
@@ -24,7 +17,10 @@ _COEFF_CACHE: dict[tuple[int, torch.dtype, torch.device], torch.Tensor] = {}
 
 @lru_cache(maxsize=None)
 def _t_d_coeffs(D: int) -> tuple[float, ...]:
-    """Python-float coefficients c_j = C(2j, j) / 4^j, j = 0..D."""
+    """
+    D: degree
+    Returns: series coefficients as Python floats
+    """
     return tuple(central_binomial(j) / 4.0**j for j in range(D + 1))
 
 
@@ -34,7 +30,9 @@ def _t_d_coeffs(D: int) -> tuple[float, ...]:
 
 
 def central_binomial(j: int) -> int:
-    """Central binomial coefficient C(2j, j).
+    """
+    j: index
+    Returns: central binomial coefficient
     """
     return math.comb(2 * j, j)
 
@@ -45,9 +43,11 @@ def bpoly_coeffs(
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> torch.Tensor:
-    """Coefficients a[0..D] of p_D(x) = sum_j a[j] x^(2j+1), cached per
-    (D, dtype, device). The expansion is carried out in double precision and
-    the result is returned in `dtype` on `device`.
+    """
+    D: degree
+    dtype, device: output type and place
+    Returns: coefficients of p_D
+    Note: computed in float64, cached
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -65,8 +65,9 @@ def bpoly_coeffs(
 
 
 def asymptotic_error_constant(D: int) -> float:
-    """kappa_D = C(2D+2, D+1) / 2^(D+1): the constant in the order-(D+1)
-    convergence u_k -> 1 of p_D.
+    """
+    D: degree
+    Returns: error constant of the (D+1)-order convergence
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -79,8 +80,10 @@ def asymptotic_error_constant(D: int) -> float:
 
 
 def t_poly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
-    """B_D(1 - x^2) = sum_{j<=D} c_j (1 - x^2)^j, summed in t = 1 - x^2 where
-    every term is nonnegative on [-1, 1]. Shape, dtype and device follow `x`.
+    """
+    x: points in [-1, 1]
+    D: degree
+    Returns: p_D(x) / x, same shape as x
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -95,14 +98,19 @@ def t_poly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
 
 
 def bpoly_eval(x: torch.Tensor, D: int) -> torch.Tensor:
-    """p_D(x) = x B_D(1 - x^2), evaluated through the residual variable.
+    """
+    x: points
+    D: degree
+    Returns: p_D(x)
     """
     return x * t_poly_eval(x, D)
 
 
 def odd_poly_eval(x: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
-    """sum_j a[j] x^(2j+1) by Horner's rule in x^2, for coefficients
-    a[0..D] given as a tensor; shape, dtype and device follow `x`.
+    """
+    x: points
+    coeffs: odd polynomial coefficients
+    Returns: polynomial value, same shape as x
     """
     coeffs = coeffs.to(device=x.device, dtype=x.dtype)
     x2 = x * x
@@ -119,9 +127,12 @@ def scalar_orbit(
     *,
     coeffs: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Orbit u_0, ..., u_K of u_{k+1} = p(u_k), as a tensor of shape
-    (n_iters + 1, *u0.shape). p is p_D, or the odd polynomial with
-    coefficients `coeffs` (D is then None).
+    """
+    u0: starting points
+    D: degree (None if coeffs given)
+    n_iters: steps
+    coeffs: custom odd polynomial
+    Returns: all iterates, shape (n_iters + 1, *u0.shape)
     """
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")
@@ -141,10 +152,13 @@ def log10_error_orbit(
     *,
     coeffs: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """log10 |1 - u_k| along the orbit of `scalar_orbit`, for u0 in (0, 1),
-    by direct subtraction. Values are floored at the machine epsilon of the
-    orbit's dtype, the level at which u_k rounds to 1. A float u0 gives a
-    float64 CPU orbit; a tensor u0 keeps its dtype and device.
+    """
+    u0: starting points in (0, 1)
+    D: degree (None if coeffs given)
+    n_iters: steps
+    coeffs: custom odd polynomial
+    Returns: log10 of the distance to 1 along the orbit
+    Note: floored at machine epsilon; a float u0 gives a float64 CPU result
     """
     u0 = torch.as_tensor(u0, dtype=torch.float64) if not torch.is_tensor(u0) else u0
     if not bool(((u0 > 0.0) & (u0 < 1.0)).all()):
@@ -160,8 +174,10 @@ def log10_error_orbit(
 
 
 def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
-    """One step of the odd matrix polynomial Phi(X) = sum_j a[j] (X X^T)^j X,
-    with one matrix product per degree. `coeffs` holds a[0..D] on X's device.
+    """
+    X: current iterate
+    coeffs: polynomial coefficients
+    Returns: next iterate
     """
     G = X @ X.mH
     out = coeffs[0] * X
@@ -173,8 +189,9 @@ def ns_step_matrix(X: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
 
 
 def gram_matrix(X: torch.Tensor) -> torch.Tensor:
-    """Gram matrix on the smaller side of X: X^T X for m >= n, X X^T for
-    m < n, of size min(m, n) x min(m, n).
+    """
+    X: input matrix
+    Returns: Gram matrix on the smaller side
     """
     return X.mH @ X if X.shape[-2] >= X.shape[-1] else X @ X.mH
 
@@ -182,13 +199,12 @@ def gram_matrix(X: torch.Tensor) -> torch.Tensor:
 def ns_step_gram(
     X: torch.Tensor, coeffs: torch.Tensor, gram: torch.Tensor | None = None
 ) -> torch.Tensor:
-    """One step of the odd matrix polynomial Phi(X) = sum_j a[j] (X X^T)^j X,
-    evaluated as X q(X^T X) for m >= n and q(X X^T) X for m < n, with
-    q(G) = sum_j a[j] G^j summed by Horner's rule. The Gram matrix is
-    min(m, n) x min(m, n) and a step costs one Gram product, D - 1 products
-    of the Gram size and one product with X. `coeffs` holds a[0..D] on X's
-    device. With `gram` = `gram_matrix(X)` already computed, the Gram product
-    is skipped; `gram` is not modified.
+    """
+    X: current iterate
+    coeffs: polynomial coefficients
+    gram: precomputed gram_matrix(X), skips that product
+    Returns: next iterate, same as ns_step_matrix
+    Note: cheaper than ns_step_matrix; gram is not modified
     """
     D = coeffs.numel() - 1
     if D == 0:
@@ -212,14 +228,15 @@ def ns_orbit_matrix(
     scale: torch.Tensor | float | None = None,
     tol: float | None = None,
 ) -> list[torch.Tensor]:
-    """Iterates X_0, ..., X_K of X_{k+1} = Phi(X_k) with X_0 = M / scale,
-    where `scale` defaults to the spectral norm of M. The polynomial is p_D,
-    or the one with coefficients `coeffs` (D is then None). The whole orbit
-    shares one scale, so every iterate is compared with the same msgn(M)
-    target.
-
-    With `tol`, iteration stops once ||X_{k+1} - X_k||_F < tol and the last
-    iterate is repeated, so the list always has n_iters + 1 entries.
+    """
+    M: input matrix
+    D: degree (None if coeffs given)
+    n_iters: steps
+    coeffs: custom odd polynomial
+    scale: divisor for M (default: spectral norm)
+    tol: early stop when a step changes less than this
+    Returns: list of n_iters + 1 iterates
+    Note: after an early stop the last iterate is repeated
     """
     if n_iters < 0:
         raise ValueError("n_iters must be nonnegative")

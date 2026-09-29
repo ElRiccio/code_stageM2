@@ -1,11 +1,8 @@
-"""The matrix sign map msgn: the exact SVD-based version and the
-decomposition-free surrogate obtained by running `ns_iteration` on a
-rescaled matrix.
+"""Matrix sign map, two ways: exact (through an SVD) or approximate (Newton-Schulz
+steps, no SVD needed).
 
-`msgn` is the type of a one-argument callable Tensor -> Tensor computing a
-matrix sign; `sgn_svd(M)` and `make_sgn_ns(D, n_iters)` both produce
-callables of this type, so either can be passed wherever a matrix sign map
-is expected.
+Everything that computes a sign is a function matrix -> matrix (`msgn`), so the
+exact and approximate versions can be swapped freely, e.g. inside `cpwl.py`.
 """
 
 from __future__ import annotations
@@ -21,16 +18,19 @@ msgn = Callable[[torch.Tensor], torch.Tensor]
 
 
 def sgn_exact(t: torch.Tensor) -> torch.Tensor:
-    """Scalar sign with sgn(0) = 0, applied elementwise.
+    """
+    t: input tensor
+    Returns: elementwise sign, 0 stays 0
     """
     return torch.sign(t)
 
 
 def sgn_svd(M: torch.Tensor, tol: float | None = None, driver: str | None = None) -> torch.Tensor:
-    """Exact msgn(M) = U diag(sgn(sigma)) V^T from a thin SVD. Singular
-    values at or below `tol` count as zero; `tol` defaults to
-    `metrics.numerical_rank_tol(M, sigma)`. `driver` is the CUDA SVD driver
-    (see `metrics.reference_svd`).
+    """
+    M: input matrix
+    tol: zero cutoff (default: numerical rank)
+    driver: CUDA SVD driver
+    Returns: exact sign matrix
     """
     U, sigma, V = metrics.reference_svd(M, driver=driver)
     if tol is None:
@@ -40,8 +40,9 @@ def sgn_svd(M: torch.Tensor, tol: float | None = None, driver: str | None = None
 
 
 def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
-    """Largest singular value of M via torch.linalg, the default rescaling
-    constant: msgn(M / beta) = msgn(M) for every beta > 0.
+    """
+    M: input matrix
+    Returns: largest singular value
     """
     return torch.linalg.matrix_norm(M, ord=2)
 
@@ -49,10 +50,12 @@ def spectral_norm_exact(M: torch.Tensor) -> torch.Tensor:
 def spectral_norm_power(
     M: torch.Tensor, iters: int, *, generator: torch.Generator
 ) -> torch.Tensor:
-    """Estimate of the largest singular value of M by `iters` power steps on
-    M^T M from a random start. The estimate never exceeds the true value, so
-    callers multiply it by a margin. Uses matrix-vector products only and no
-    host synchronization.
+    """
+    M: input matrix
+    iters: power steps
+    generator: RNG
+    Returns: largest singular value estimate
+    Note: never overshoots, so callers add a margin
     """
     v = torch.randn(M.shape[-1], generator=generator, device=M.device, dtype=M.dtype)
     v = v / torch.linalg.norm(v)
@@ -71,10 +74,15 @@ def sgn_ns_fixed(
     margin: float,
     generator: torch.Generator,
 ) -> torch.Tensor:
-    """Decomposition-free msgn(M): K steps of degree D (min-side Gram form,
-    `ns_iteration.ns_step_gram`) on M / (margin * power estimate of sigma_max).
-    There is no residual check, no zero-scale test and no stored orbit, so
-    nothing forces a device synchronization; a zero matrix is not handled.
+    """
+    M: input matrix
+    D: degree
+    K: steps
+    power_iters: norm-estimate steps
+    margin: norm safety factor
+    generator: RNG
+    Returns: approximate sign matrix
+    Note: fixed K, no checks; zero matrix not handled
     """
     s = margin * spectral_norm_power(M, power_iters, generator=generator)
     X = M / s
@@ -94,13 +102,16 @@ def sgn_ns_until(
     margin: float,
     generator: torch.Generator,
 ) -> tuple[torch.Tensor, int, bool]:
-    """Decomposition-free msgn(M) for full-rank M, stopped on an SVD-free
-    residual: steps of degree D (min-side Gram form) on M / (margin * power
-    estimate of sigma_max) until ||I - X^H X||_F / sqrt(r) <= eps, r =
-    min(m, n). That quantity bounds the relative Frobenius error against
-    msgn(M) from above. The check reuses the Gram matrix of the step and
-    costs one host synchronization per iteration. Returns (X, K, reached),
-    K the number of steps taken (k_max if `reached` is False).
+    """
+    M: input matrix (full rank)
+    D: degree
+    eps: target residual
+    k_max: step cap
+    power_iters: norm-estimate steps
+    margin: norm safety factor
+    generator: RNG
+    Returns: X, steps K, reached target?
+    Note: one host sync per step
     """
     s = margin * spectral_norm_power(M, power_iters, generator=generator)
     X = M / s
@@ -127,15 +138,15 @@ def make_sgn_ns_until(
     generator: torch.Generator,
     stats: list[tuple[int, bool]] | None = None,
 ) -> msgn:
-    """The tolerance-stopped decomposition-free msgn: a callable running
-    `sgn_ns_until` on its argument and returning just the sign matrix, so it
-    can be passed wherever a matrix sign map is expected (e.g. the sign
-    forms of `cpwl.py`, which may call it more than once per evaluation).
-    With `stats`, each call appends its (K, reached) pair, so a caller can
-    recover the iteration count and convergence flag of every internal sign
-    call made while evaluating a composite expression, and `len(stats)`
-    after the call is the number of sign evaluations actually used. Usage:
-    stats = []; sgn = make_sgn_ns_until(D, 1e-6, 50, power_iters=10, margin=1.1, generator=g, stats=stats); sgn(M).
+    """
+    D: degree
+    eps: target residual
+    k_max: step cap
+    power_iters: norm-estimate steps
+    margin: norm safety factor
+    generator: RNG
+    stats: list to log (K, reached) per call
+    Returns: msgn function (matrix -> sign)
     """
 
     def msgn(M: torch.Tensor) -> torch.Tensor:
@@ -156,11 +167,12 @@ def make_sgn_ns(
     scale: torch.Tensor | float | None = None,
     tol: float | None = None,
 ) -> msgn:
-    """The surrogate msgn: a callable running `n_iters` steps of degree D on
-    M / scale, with `scale` defaulting to the spectral norm of M. The scale
-    is recomputed at every call, so the callable applies to any argument
-    (for instance alpha * N - M). With `tol`, iteration stops once the step
-    ||X_{k+1} - X_k||_F falls below it.
+    """
+    D: degree
+    n_iters: steps
+    scale: divisor for M (default: spectral norm, recomputed per call)
+    tol: early stop when a step changes less than this
+    Returns: msgn function (matrix -> sign)
     """
 
     def msgn(M: torch.Tensor) -> torch.Tensor:

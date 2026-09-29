@@ -1,9 +1,9 @@
-"""SVD timing experiment: wall-clock time of the decomposition-free msgn
-(generalized Newton-Schulz with the bpoly(D) profile, fixed K by default, or
-run to a residual tolerance with `use_tolerance`) against the SVD-based msgn,
-over matrix size, sigma_min, device and degree D, each timing paired with the
-error against the exact msgn. Every repetition uses a new random matrix of
-the same size and sigma_min."""
+"""SVD timing experiment: how long the Newton-Schulz sign takes compared with
+the SVD-based one, across matrix size, smallest singular value, device and
+degree. Each timing comes with its error against the exact sign.
+
+Every repetition uses a fresh random matrix of the same size and spectrum.
+"""
 
 from __future__ import annotations
 
@@ -17,30 +17,25 @@ from ns_core import metrics, orbit_tools, profiles, sign_map, timing
 
 @dataclass
 class SvdTimingConfig:
-    """Settings of the SVD timing experiment. Square n x n matrices with
-    log-spaced singular values in [smin, 1]. `n_reps` is the number of
-    independent random matrices per (n, smin), seeded `seed`, `seed` + 1, ...;
-    each route is timed once on each. The `n_warmup` untimed warm-up calls are
-    made on the first matrix only. `n_fixed` is the size read by the sigma_min
-    plot and must be in `sizes`.
-
-    By default (`use_tolerance` False) every Newton-Schulz route runs a fixed
-    iteration count K_D, the same on every matrix of a given (D, smin): `eps`
-    is then the accuracy behind K_D (None: 10 machine epsilons of `dtype`).
-    With `use_tolerance` True, `sign_map.sgn_ns_until` is used instead: each
-    matrix is iterated independently until the SVD-free residual
-    ||I - X^H X||_F / sqrt(n) reaches `eps` (then read as the same tolerance,
-    still defaulting to 10 machine epsilons of `dtype` when None) or `k_max`
-    iterations are spent, whichever comes first; a matrix that does not reach
-    it within `k_max` is flagged as not converged rather than stopping the
-    run, and the reported K becomes the median iteration count actually run.
-
-    `power_iters` and `power_margin` set the pre-scaling: the scale is
-    `power_margin` times the power-iteration estimate of sigma_max, and (in
-    the fixed mode) K_D is computed for smin / `power_margin`. `cpu_threads`
-    None keeps the torch default; `svd_driver` None keeps torch's choice
-    (CUDA only). Devices must be available on the machine, e.g. ["cpu"]
-    without a GPU.
+    """
+    sizes: matrix sizes n (square n x n)
+    smins: smallest singular values to try
+    degrees: degrees to compare
+    devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
+    n_fixed: size used by the smin plot (must be in sizes)
+    dtype: precision
+    eps: accuracy behind K_D (None = 10 machine epsilons)
+    use_tolerance: run each matrix until eps instead of a fixed K_D
+    k_max: step cap in tolerance mode
+    power_iters: norm-estimate steps
+    power_margin: norm safety factor
+    n_warmup: untimed calls, first matrix only
+    n_reps: random matrices per (n, smin)
+    cpu_threads: torch threads (None = default)
+    svd_driver: CUDA SVD driver (None = torch's choice)
+    seed: RNG seed of the first matrix, then +1 each
+    verbose: print progress
+    Note: in tolerance mode a matrix that misses eps is flagged, not fatal, and K is the median steps run
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
@@ -63,20 +58,13 @@ class SvdTimingConfig:
 
 
 def run_svd_timing(cfg: SvdTimingConfig) -> dict[str, object]:
-    """Times the SVD-based and the Newton-Schulz msgn on the same input for
-    every (device, size, smin, D), over cfg.n_reps random matrices. Each
-    matrix is built once in float64 on the CPU, with its exact msgn N, and
-    moved to each device in cfg.dtype. With `cfg.use_tolerance` False (the
-    default), the Newton-Schulz route runs the fixed count K_D
-    (`sign_map.sgn_ns_fixed`); with it True, every matrix is run instead with
-    `sign_map.sgn_ns_until` until it reaches `cfg.eps` or `cfg.k_max`.
-    Returns {"cfg": cfg, "eps": eps used, "cells": {(device, n, smin): {
-    "svd": {"time": s, "error": e}, "ns": {D: {"time": s, "error": e, "K":
-    K}}}}}, where s and e are {"median", "mean", "std"} over the matrices: s
-    in seconds, e the relative Frobenius error against N (measured outside
-    the timer). K is the fixed iteration count in the default mode, or the
-    median iteration count actually run (with an extra "reached" fraction
-    alongside it) in tolerance mode.
+    """
+    cfg: settings
+    Returns: {"cfg", "eps" (used), "cells": {(device, n, smin): {
+    "svd": {"time", "error"}, "ns": {D: {"time", "error", "K"}}}}}
+    Note: time and error are {median, mean, std} over matrices; error is relative
+    Frobenius vs the exact sign, measured outside the timer; K is the fixed count,
+    or in tolerance mode the median steps run plus a "reached" fraction
     """
     eps = 10.0 * torch.finfo(cfg.dtype).eps if cfg.eps is None else cfg.eps
     K = (
@@ -172,7 +160,12 @@ def run_svd_timing(cfg: SvdTimingConfig) -> dict[str, object]:
 
 
 def _print_table(title: str, header: list[str], rows: list[list[str]]) -> None:
-    """Prints a titled text table with aligned columns."""
+    """
+    title: line above the table
+    header: column names
+    rows: cell strings
+    Returns: nothing, prints an aligned table
+    """
     widths = [max(len(r[i]) for r in [header, *rows]) for i in range(len(header))]
     print(title)
     for r in [header, *rows]:
@@ -180,9 +173,11 @@ def _print_table(title: str, header: list[str], rows: list[list[str]]) -> None:
 
 
 def time_table(res: dict[str, object], device: str, smin: float) -> None:
-    """Prints the time in seconds, "median ± std" over the random matrices,
-    for one device and smin: one row per size, one column per D and one for the
-    SVD. `res` is the output of `run_svd_timing`.
+    """
+    res: output of run_svd_timing
+    device: which device
+    smin: which smallest singular value
+    Returns: nothing, prints time (s) as median ± std, one row per size, one column per degree plus SVD
     """
     cfg, cells = res["cfg"], res["cells"]
     fmt = lambda s: f"{s['median']:.3g} ± {s['std']:.2g}"
@@ -200,13 +195,12 @@ def time_table(res: dict[str, object], device: str, smin: float) -> None:
 
 
 def accuracy_table(res: dict[str, object], device: str, smin: float) -> None:
-    """Prints the accuracy reached for one device and smin: the relative
-    Frobenius error against the exact msgn, "mean ± std" over the random
-    matrices, for each D and the SVD at every size, and the number of
-    iterations K that Newton-Schulz ran: fixed by D and smin by default, or
-    (with `cfg.use_tolerance`) the median iteration count actually run,
-    marked with a trailing * if some matrix did not reach cfg.eps within
-    cfg.k_max. `res` is the output of `run_svd_timing`.
+    """
+    res: output of run_svd_timing
+    device: which device
+    smin: which smallest singular value
+    Returns: nothing, prints relative Frobenius error (mean ± std) per degree and size, plus the steps K
+    Note: in tolerance mode K gets a * if some matrix missed eps
     """
     cfg, cells = res["cfg"], res["cells"]
     sizes = sorted(cfg.sizes)

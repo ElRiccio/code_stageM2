@@ -1,8 +1,7 @@
-"""Reference computations and error norms: the decomposition-based ground
-truth that decomposition-free results are compared with.
+"""Ground-truth computations (SVD, eigendecomposition, exact spectral operators)
+and error norms, used to check the decomposition-free results against.
 
-Reference decompositions and spectral operators use torch.linalg on the
-device of the input; their precision is the dtype of the input matrix.
+Everything runs on the input's device, in the input's dtype.
 """
 
 from __future__ import annotations
@@ -20,25 +19,29 @@ import torch
 def reference_svd(
     M: torch.Tensor, driver: str | None = None
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Thin SVD (U, sigma, V) of M with sigma descending, via torch.linalg.svd.
-    `driver` picks the cuSOLVER method ("gesvd", "gesvdj", "gesvda") and is
-    only accepted for CUDA inputs;
+    """
+    M: input matrix
+    driver: cuSOLVER method (gesvd, gesvdj, gesvda)
+    Returns: U, sigma (descending), V
+    Note: driver only works on CUDA
     """
     U, sigma, Vh = torch.linalg.svd(M, full_matrices=False, driver=driver)
     return U, sigma, Vh.mH
 
 
 def reference_eig(M: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Eigendecomposition (lambda, Q) of a symmetric M with lambda ascending,
-    via torch.linalg.eigh.
+    """
+    M: symmetric matrix
+    Returns: eigenvalues (ascending), eigenvectors Q
     """
     return torch.linalg.eigh(M)
 
 
 def numerical_rank_tol(M: torch.Tensor, sigma: torch.Tensor) -> float:
-    """Numerical-rank threshold max(m, n) * eps(dtype) * sigma_max: singular
-    values at or below it read as exactly zero, the floating-point form of
-    sgn(0) = 0.
+    """
+    M: input matrix
+    sigma: its singular values (descending)
+    Returns: zero cutoff for singular values
     """
     if sigma.numel() == 0:
         return 0.0
@@ -52,32 +55,41 @@ def numerical_rank_tol(M: torch.Tensor, sigma: torch.Tensor) -> float:
 
 
 def op_svd(M: torch.Tensor, f: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
-    """U diag(f(sigma)) V^T: the operator that applies the scalar map f to the
-    singular values of M. An odd extension of the profile (see
-    `cpwl.odd_extension`) maps zero singular values to zero.
+    """
+    M: input matrix
+    f: scalar map, applied to singular values
+    Returns: M with f applied to its spectrum
     """
     U, sigma, V = reference_svd(M)
     return (U * f(sigma)) @ V.mH
 
 
 def op_eig(M: torch.Tensor, f: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
-    """Q diag(f(lambda)) Q^T: the operator that applies the scalar map f to
-    the eigenvalues of a symmetric M.
+    """
+    M: symmetric matrix
+    f: scalar map, applied to eigenvalues
+    Returns: M with f applied to its spectrum
     """
     lam, Q = reference_eig(M)
     return (Q * f(lam)) @ Q.mH
 
 
 def spectral_coordinates(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
-    """diag(U^T Y V): the coordinates of Y in the frame (U, V). They are the
-    singular values of Y when Y = U diag(c) V^T with c >= 0.
+    """
+    Y: input matrix
+    U: left frame
+    V: right frame
+    Returns: coordinates of Y in the frame
     """
     return torch.einsum("ji,ji->i", U, Y @ V)
 
 
 def frame_residual(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
-    """|| Y - U diag(diag(U^T Y V)) V^T ||_F, the part of Y outside the frame
-    (U, V); it is zero exactly when Y = U diag(c) V^T.
+    """
+    Y: input matrix
+    U: left frame
+    V: right frame
+    Returns: size of the part of Y outside the frame (0 if Y fits it)
     """
     c = spectral_coordinates(Y, U, V)
     return torch.linalg.norm(Y - (U * c) @ V.mH)
@@ -89,18 +101,27 @@ def frame_residual(Y: torch.Tensor, U: torch.Tensor, V: torch.Tensor) -> torch.T
 
 
 def frobenius_error(approx: torch.Tensor, exact: torch.Tensor) -> torch.Tensor:
-    """|| approx - exact ||_F.
+    """
+    approx: computed matrix
+    exact: reference matrix
+    Returns: Frobenius error
     """
     return torch.linalg.norm(approx - exact)
 
 
 def relative_frobenius_error(approx: torch.Tensor, exact: torch.Tensor) -> torch.Tensor:
-    """|| approx - exact ||_F / || exact ||_F.
+    """
+    approx: computed matrix
+    exact: reference matrix
+    Returns: Frobenius error / norm of exact
     """
     return frobenius_error(approx, exact) / torch.linalg.norm(exact)
 
 
 def spectral_error(approx: torch.Tensor, exact: torch.Tensor) -> torch.Tensor:
-    """|| approx - exact ||_2, the spectral norm of the difference.
+    """
+    approx: computed matrix
+    exact: reference matrix
+    Returns: spectral-norm error
     """
     return torch.linalg.matrix_norm(approx - exact, ord=2)

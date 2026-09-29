@@ -1,4 +1,8 @@
-"""Matplotlib helpers 
+"""Matplotlib plots for the experiments: convergence curves, timing curves,
+ranks and spectra.
+
+Each plot function takes an optional `ax` (a new one is made if omitted) and
+returns it.
 """
 
 from __future__ import annotations
@@ -30,11 +34,13 @@ def plot_error_curves(
     predicted: dict[int, int] | None = None,
     ylabel: str | None = None,
 ):
-    """Error against iteration k on a log scale, one curve per D. With `eps`,
-    draws that level and marks the first k at or below it; with `predicted`
-    (D -> K_D), draws a dashed vertical line at each predicted count. With
-    `ylabel`, overrides the default spectral-norm-error label, for callers
-    plotting a different error (e.g. a relative Frobenius error).
+    """
+    errors: error curve per degree
+    ax: axis to draw on
+    eps: target level, marks the first step below it
+    predicted: K_D per degree, drawn as dashed vertical lines
+    ylabel: replaces the default y label
+    Returns: the axis
     """
     ax = _axis(ax)
     colors = _colors(errors)
@@ -60,11 +66,12 @@ def plot_error_curves(
 
 
 def plot_error_map(errors: dict[int, torch.Tensor], ax=None, floor: float | None = None):
-    """Log-log plot of e_{k+1} against e_k, one point cloud per D, with the
-    asymptotic law e_{k+1} = kappa_D e_k^(D+1) dashed in the same colour
-    (slope D+1). Points with e_{k+1} at or below `floor` are dropped; by
-    default the floor is 3x the final error of a curve that has stagnated
-    (last two errors within a factor 2), and 0 otherwise.
+    """
+    errors: error curve per degree
+    ax: axis to draw on
+    floor: drop points at or below this error
+    Returns: the axis
+    Note: default floor is 3x the final error if the curve stagnated, else 0
     """
     ax = _axis(ax)
     colors = _colors(errors)
@@ -92,15 +99,22 @@ def plot_error_map(errors: dict[int, torch.Tensor], ax=None, floor: float | None
 
 
 def _time_curve(ax, x, stats, color, label, ls="-"):
-    """Median time against x, from a list of time stats."""
+    """
+    ax: axis to draw on
+    x: x values
+    stats: timing stats per x (from timing.describe)
+    color, label, ls: line style
+    """
     ax.loglog(x, [c["median"] for c in stats], ls, marker="o", ms=3, color=color, label=label)
 
 
 def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
-    """Median time against matrix size n on log-log axes for one device and
-    smin: one curve per D for the Newton-Schulz msgn and a dashed black curve
-    for the SVD (medians over the random matrices). `res` is the output of
-    `run_svd_timing`.
+    """
+    res: output of run_svd_timing
+    device: which device's timings
+    smin: which smallest singular value
+    ax: axis to draw on
+    Returns: the axis (time vs size, one curve per degree plus SVD)
     """
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
@@ -117,10 +131,11 @@ def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
 
 
 def plot_time_vs_smin(res: dict, device: str, ax=None):
-    """Median time against sigma_min on log-log axes for one device at size
-    cfg.n_fixed: one curve per D, annotated with the iteration count K_D at
-    every point, and a dashed black curve for the SVD. `res` is the output of
-    `run_svd_timing`.
+    """
+    res: output of run_svd_timing
+    device: which device's timings
+    ax: axis to draw on
+    Returns: the axis (time vs smallest singular value at size n_fixed, K_D labelled, plus SVD)
     """
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
@@ -153,11 +168,12 @@ def plot_time_vs_degree(
     ax=None,
     label: str | None = None,
 ):
-    """Time to reach eps against the degree D for one device, dtype, size n and
-    smin: the median over the random matrices with a ±std bar, and the median
-    iteration count K written at each point. A `label` adds a legend entry, so
-    several selections can share one axis. `res` is the output of
-    `run_time_to_accuracy`.
+    """
+    res: output of run_time_to_accuracy
+    device, dtype, n, smin, eps: which setting to plot
+    ax: axis to draw on
+    label: legend entry, lets several settings share one axis
+    Returns: the axis (median time vs degree, ±std bars, median K labelled)
     """
     ax = _axis(ax)
     degrees = sorted(res["cfg"].degrees)
@@ -183,13 +199,13 @@ def plot_time_vs_degree(
 def add_svd_reference_line(
     ax, res: dict, device: str, dtype: torch.dtype, n: int, smin: float, label: str = "SVD"
 ):
-    """Draws a horizontal dashed black line at the median exact SVD-based
-    evaluation time for one (device, dtype, size, smin), read from a result
-    dict with an "svd" entry keyed the same way (e.g.
-    `cpwl_time_to_accuracy.run_cpwl_time_to_accuracy` with
-    `svd_reference_line=True`). No-op if that key is absent, so it is safe
-    to call unconditionally. Usage:
-    add_svd_reference_line(ax, res, "cpu", torch.float64, 512, 1e-2).
+    """
+    ax: axis to draw on
+    res: result dict with an "svd" entry (needs svd_reference_line=True)
+    device, dtype, n, smin: which setting
+    label: legend entry
+    Returns: the axis
+    Note: does nothing if the setting has no SVD timing
     """
     svd = res.get("svd", {})
     key = (device, dtype, n, smin)
@@ -201,8 +217,11 @@ def add_svd_reference_line(
 
 
 def plot_ranks(ranks: dict[int, torch.Tensor], r: int | None = None, ax=None):
-    """Numerical rank of X_k against iteration k, one curve per D; with `r`,
-    draws the rank of M as a dashed horizontal line.
+    """
+    ranks: rank curve per degree
+    r: true rank of M, drawn as a dashed line
+    ax: axis to draw on
+    Returns: the axis
     """
     ax = _axis(ax)
     colors = _colors(ranks)
@@ -224,11 +243,13 @@ def plot_spectrum(
     ax=None,
     xaxis: str = "sigma",
 ):
-    """The input singular values `sigma` (dotted), the exact target scalar
-    profile `target` (dashed), and the spectral coordinates of a
-    decomposition-free operator's output at a few iteration counts (one
-    curve per k in `coords`), all read against the sorted `sigma` (`xaxis`
-    = "sigma") or their rank index (`xaxis` = "index").
+    """
+    sigma: input singular values
+    target: exact profile value at each sigma
+    coords: output spectrum per iteration count k
+    ax: axis to draw on
+    xaxis: "sigma" (values) or "index" (rank order)
+    Returns: the axis
     """
     ax = _axis(ax)
     order = torch.argsort(sigma)

@@ -1,62 +1,70 @@
 # ns_core
 
-PyTorch library for the matrix sign map, the generalized Newton–Schulz
-iteration and the spectral operators built from it.
+A small PyTorch library for the matrix sign map, the Newton-Schulz iteration,
+and the spectral operators you can build from them.
 
-- `matrices.py` — random test matrices: Gaussian, symmetric, semi-orthogonal
-  factors, a matrix with an exactly prescribed spectrum, and rank-deficient /
-  ill-conditioned matrices.
-- `metrics.py` — reference SVD and eigendecomposition, reference spectral
-  operators (`op_svd`, `op_eig`), spectral coordinates, frame residuals, and
-  the Frobenius, relative Frobenius and spectral error norms.
-- `ns_iteration.py` — the polynomials `bpoly_D` (coefficients, evaluation in
-  the residual variable, orbits, `log10_error_orbit`, asymptotic error
-  constant) and the matrix recursion (`ns_step_matrix`, `ns_orbit_matrix`,
-  and `ns_step_gram`, the same step with the Gram matrix on the smaller side
-  and Horner's rule, which can take that Gram matrix, `gram_matrix`, already
-  computed).
-  The orbit functions take a degree `D` or a coefficient tensor `coeffs`.
-- `sign_map.py` — the matrix sign map: `sgn_svd` (exact), `make_sgn_ns` (the
-  decomposition-free surrogate built from `ns_iteration`), both of type
-  `msgn`, so any spectral operator in `cpwl.py` accepts either. `sgn_ns_fixed`
-  runs K steps; `sgn_ns_until` runs until an SVD-free residual reaches a target.
-  `make_sgn_ns_until` wraps `sgn_ns_until` as an `msgn` callable (so it too
-  can be passed to `cpwl.py`'s sign forms), with an optional `stats` list
-  that collects each internal call's (iterations, reached) pair.
-- `profiles.py` — the truncated series `B_D`, the basin radius `R_D`, the
-  iteration count `K_D`, and the admissible quintics `x(1 + r1 t + r2 t^2)`:
-  coefficients, `bmax`, slopes at 0 and 1, extremal slope, order of
-  convergence and error constant.
-- `orbit_tools.py` — helpers for the convergence experiments: the test
-  instance with a log-spaced prescribed spectrum and its exact `msgn`, the
-  orbit of the iteration in a chosen dtype (with an optional stopping
-  tolerance), and its errors, numerical ranks and first hitting index.
-- `plots.py` — matplotlib helpers for those experiments (error curves, the
-  log-log map e_{k+1} against e_k, rank of X_k, and the input/target/iterate
-  spectrum of a decomposition-free operator) and for the timing experiment
-  (time against n, time against sigma_min) and the time-to-accuracy experiment
-  (time against D); each takes an optional axis. `add_svd_reference_line`
-  draws an optional horizontal exact-SVD-time line on such an axis.
-- `timing.py` — `time_call`: one timed call after optional warm-up, with CUDA
-  synchronization; `describe`: median, mean and std of repeated measurements.
-- `cpwl.py` — the piecewise-linear scalar profiles and their sign forms on
-  R^{m x n} (singular-value frame) and Sym^n (eigenvalue frame, built from
-  the matrix absolute value).
+## Modules
+
+- `matrices.py` makes random test matrices: Gaussian, symmetric, one with an
+  exactly chosen spectrum, and rank-deficient or ill-conditioned ones.
+- `metrics.py` holds the ground truth: SVD, eigendecomposition, the exact
+  spectral operators (`op_svd`, `op_eig`), and the error norms (Frobenius,
+  relative Frobenius, spectral).
+- `ns_iteration.py` is the iteration itself: the polynomial p_D (coefficients
+  and evaluation), scalar orbits, and the matrix step. `ns_step_matrix` is the
+  plain version; `ns_step_gram` gives the same result more cheaply by working
+  with the Gram matrix on the smaller side, and can reuse one you've already
+  computed (`gram_matrix`). Orbit functions take either a degree `D` or a
+  `coeffs` tensor for a custom polynomial.
+- `sign_map.py` is the matrix sign map. `sgn_svd` is exact; `make_sgn_ns` is
+  the SVD-free approximation. Both have the same shape (matrix in, sign out,
+  called `msgn`), so anything in `cpwl.py` accepts either. The Newton-Schulz
+  versions come in three flavors: `sgn_ns_fixed` runs K steps,
+  `sgn_ns_until` runs until a residual reaches a target, and
+  `make_sgn_ns_until` wraps that as an `msgn`. Give it a `stats` list and it
+  records (steps, reached) for every internal call.
+- `profiles.py` has the closed-form quantities: the truncated series B_D, the
+  basin radius R_D, the step count K_D, and the admissible quintics
+  (coefficients, slopes, order and constant of convergence).
+- `orbit_tools.py` supports the convergence experiments: building a test
+  matrix with log-spaced singular values plus its exact sign, running the
+  iteration, and measuring errors, ranks and the first step below a target.
+- `plots.py` has the plotting helpers, all taking an optional axis: error
+  curves, the e_{k+1} vs e_k map, rank curves, spectra, and the timing plots
+  (time vs n, vs smin, vs degree). `add_svd_reference_line` adds the exact-SVD
+  time as a dashed line.
+- `timing.py` has `time_call` (one timed call, with warm-up and CUDA sync) and
+  `describe` (median, mean, std of repeated timings).
+- `cpwl.py` has the piecewise-linear profiles (clip, soft threshold, leaky
+  ReLU, ...) and their matrix versions: rectangular ones acting on singular
+  values, symmetric ones acting on eigenvalues (built from the matrix absolute
+  value).
 
 ## Conventions
 
-- Functions that take a tensor create every internal tensor on its device and
-  dtype. Functions without a tensor input (`bpoly_coeffs`,
-  `truncated_series_coeffs`, the generators in `matrices.py`) take `device`
-  and `dtype` keywords, defaulting to CPU / float64 or CPU / float32.
-- Coefficients are computed in double precision and returned in the requested
-  dtype.
-- Randomized functions take an explicit `torch.Generator`.
-- A quintic runs through the orbit functions by its coefficient tensor:
+- A function that takes a tensor builds its internal tensors on that tensor's
+  device and dtype. One without a tensor input (`bpoly_coeffs`,
+  `truncated_series_coeffs`, the generators in `matrices.py`) takes `device`
+  and `dtype` keywords, defaulting to CPU with float64 or float32.
+- Coefficients are computed in double precision and cast to the requested
+  dtype at the end.
+- Anything random takes an explicit `torch.Generator`. Nothing uses global
+  seeding.
+- A quintic goes through the orbit functions as a coefficient tensor:
   `ns_orbit_matrix(M, None, 10, coeffs=quintic_coeffs(r1, r2))`.
 
-## Running
+## Docstrings
 
-From the repo root: `python -c "import ns_core"`, or
-`from ns_core import matrices, ns_iteration, sign_map, profiles, cpwl`.
-Each public function's docstring ends with a one-line usage.
+Each function's docstring lists its inputs, one short line each, then what it
+returns, then at most one `Note:` for anything that would surprise a caller.
+The reasoning behind each formula lives in the thesis, not here.
+
+## Trying it
+
+From the repo root:
+
+```
+python -c "import ns_core"
+```
+
+or `from ns_core import matrices, ns_iteration, sign_map, profiles, cpwl`.

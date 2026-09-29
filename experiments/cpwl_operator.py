@@ -1,7 +1,6 @@
-"""CPWL operator experiment: convergence of the decomposition-free entrywise
-CPWL spectral operator, evaluated through the iterative msgn surrogate, to
-the exact operator read off a signed SVD, and the convergence of its output
-spectrum as the iteration count grows."""
+"""CPWL operator experiment: how close the SVD-free piecewise-linear spectral
+operator gets to the exact one as the iteration count grows, measured both as
+an error and as the output spectrum."""
 
 from __future__ import annotations
 
@@ -15,20 +14,25 @@ from ns_core import cpwl, metrics, orbit_tools, sign_map
 
 @dataclass
 class CPWLOperatorConfig:
-    """Settings of the CPWL operator experiment. `rank` follows
-    `orbit_tools.resolve_rank` (None = full rank); the nonzero singular
-    values of the test matrix are log-spaced in [smin, 1].
-
-    `profile` selects the CPWL map and reads its parameters from the fields
-    below: "clip" (alpha, beta), "soft" (gamma), "leaky_relu" (a),
-    "capped_leaky_relu" (a, beta), "leaky_clip" (a, mu), or "spline" (knots,
-    vals) for an arbitrary `cpwl.PiecewiseLinearProfile`. Unused fields for
-    the chosen profile are ignored.
-
-    `degrees` and `k_max` drive the error-against-iterations run (one curve
-    per degree, k = 0..k_max); `D_show` and `k_show` drive the spectrum run
-    (one degree, a few iteration counts). `tol` is the stopping tolerance on
-    every internal Newton-Schulz sign call (None: `orbit_tools.default_tol`).
+    """
+    m, n: matrix shape
+    rank: see orbit_tools.resolve_rank (None = full)
+    smin: smallest nonzero singular value
+    profile: "clip", "soft", "leaky_relu", "capped_leaky_relu", "leaky_clip" or "spline"
+    alpha, beta: clip bounds (also beta = cap for capped_leaky_relu)
+    gamma: soft threshold
+    a: leaky slope
+    mu: leaky clip half-width
+    knots, vals: spline points (profile "spline")
+    degrees: degrees for the error run
+    k_max: steps for the error run
+    D_show: degree for the spectrum run
+    k_show: step counts for the spectrum run
+    tol: early-stop step size for each sign call (None = orbit_tools.default_tol)
+    dtype: precision
+    device: cpu or cuda
+    seed: RNG seed
+    Note: parameters the chosen profile does not use are ignored
     """
 
     m: int = 64
@@ -56,16 +60,10 @@ class CPWLOperatorConfig:
 def resolve_profile(
     cfg: CPWLOperatorConfig,
 ) -> tuple[Callable[[torch.Tensor], torch.Tensor], Callable[[torch.Tensor, sign_map.msgn], torch.Tensor]]:
-    """The exact scalar profile and its decomposition-free sign-form lift
-    selected by cfg.profile, bound to cfg's parameters: (scalar_fn,
-    sign_form), with sign_form(M, sgn) the matrix expression built from a
-    sign callable. Every sign form reads a zero singular value as sgn(0) = 0,
-    so it can only ever produce f(0) = 0 there; scalar_fn is therefore the
-    odd extension (cpwl.odd_extension) of the chosen profile, which agrees
-    with the raw profile wherever it already vanishes at 0 and otherwise
-    forces it to 0 there too, so scalar_fn stays the exact reference that
-    sign_form can actually converge to, including on rank-deficient M. Usage:
-    scalar_fn, sign_form = resolve_profile(cfg); sign_form(M, sgn).
+    """
+    cfg: settings (or any config with the same profile fields)
+    Returns: scalar_fn (exact profile), sign_form (M, sgn -> matrix version)
+    Note: scalar_fn is the odd extension, because sign forms always map 0 to 0
     """
     if cfg.profile == "clip":
         alpha, beta = cfg.alpha, cfg.beta
@@ -101,14 +99,11 @@ def resolve_profile(
 def spectral_reference(
     M: torch.Tensor, scalar_fn: Callable[[torch.Tensor], torch.Tensor]
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """(U, sigma, V, target, Y): the SVD frame of M, sigma thresholded at
-    metrics.numerical_rank_tol so a rounding-level near-zero singular value
-    (M reconstructed from an exactly rank-deficient spectrum lands there, not
-    on an exact 0.0) reads as the same zero that sign_map.sgn_svd(M) reads it
-    as, `target` = scalar_fn(sigma) at that cleaned sigma, and Y = U diag(target)
-    V^T the exact spectral operator: the reference a decomposition-free sign
-    form built on msgn can actually converge to. Usage:
-    U, sigma, V, target, Y = spectral_reference(M, scalar_fn).
+    """
+    M: input matrix
+    scalar_fn: exact profile
+    Returns: U, sigma, V (SVD of M), target (profile at sigma), Y (exact operator on M)
+    Note: near-zero singular values are set to 0, as sgn_svd does
     """
     U, sigma, V = metrics.reference_svd(M)
     tol = metrics.numerical_rank_tol(M, sigma)
@@ -119,12 +114,10 @@ def spectral_reference(
 
 
 def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, dict[int, torch.Tensor]]:
-    """Runs every degree in cfg.degrees on one matrix; returns
-    {"error": {D: e_0..e_kmax}}, the relative Frobenius error of the
-    decomposition-free CPWL operator (cfg.profile's sign form, at k
-    Newton-Schulz iterations shared by every internal sign call) against the
-    exact operator read off a signed SVD. Usage:
-    run_cpwl_convergence(CPWLOperatorConfig(profile="clip", alpha=-0.5, beta=0.5)).
+    """
+    cfg: settings
+    Returns: {"error": {D: relative Frobenius error at k = 0..k_max}}
+    Note: every internal sign call uses the same k steps
     """
     M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     scalar_fn, sign_form = resolve_profile(cfg)
@@ -144,11 +137,10 @@ def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, dict[int, torch.T
 
 
 def run_cpwl_spectrum(cfg: CPWLOperatorConfig) -> dict[str, object]:
-    """Runs cfg.D_show on one matrix at every k in cfg.k_show; returns
-    {"sigma": singular values of M, "target": the exact scalar profile at
-    sigma, "coords": {k: spectral coordinates of the operator's output at k
-    Newton-Schulz iterations}}. Usage:
-    run_cpwl_spectrum(CPWLOperatorConfig(profile="clip", D_show=3, k_show=[1, 2, 4, 8])).
+    """
+    cfg: settings
+    Returns: {"sigma": singular values of M, "target": exact profile at sigma,
+    "coords": {k: output spectrum after k steps}}
     """
     M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     scalar_fn, sign_form = resolve_profile(cfg)

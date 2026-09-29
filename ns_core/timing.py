@@ -1,5 +1,5 @@
-"""Wall-clock timing of a callable, with warm-up and CUDA synchronization, and
-summary statistics of repeated measurements."""
+"""Timing helpers: time one call (with warm-up and CUDA sync) and summarize
+repeated timings."""
 
 from __future__ import annotations
 
@@ -14,10 +14,12 @@ def time_call(
     device: torch.device | str,
     n_warmup: int = 0,
 ) -> tuple[float, torch.Tensor]:
-    """Time in seconds of one call of the zero-argument callable `fn`, after
-    `n_warmup` untimed calls. On a CUDA device the stream is synchronized
-    before and after the timed call, so the time is that of completed work.
-    Returns (seconds, output of the timed call).
+    """
+    fn: function to time (no arguments)
+    device: where fn runs
+    n_warmup: untimed calls first
+    Returns: seconds, output of the timed call
+    Note: syncs CUDA before and after
     """
     cuda = torch.device(device).type == "cuda"
     for _ in range(n_warmup):
@@ -32,8 +34,9 @@ def time_call(
 
 
 def describe(values: list[float]) -> dict[str, float]:
-    """Median, mean and sample standard deviation (0 for a single value) of
-    a list of measurements.
+    """
+    values: timings
+    Returns: dict with median, mean, std
     """
     t = torch.tensor(values, dtype=torch.float64)
     std = float(t.std()) if t.numel() > 1 else 0.0

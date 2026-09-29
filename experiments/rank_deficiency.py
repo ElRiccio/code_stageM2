@@ -1,6 +1,5 @@
-"""Rank-deficiency experiment: one matrix of rank r < min(m, n); the error
-against msgn(M), and whether the rank and the zero singular values are kept
-along the orbit."""
+"""Rank-deficiency experiment: run the iteration on a matrix of rank below full,
+and check that the error shrinks and the zero singular values stay zero."""
 
 from __future__ import annotations
 
@@ -13,15 +12,19 @@ from ns_core import orbit_tools
 
 @dataclass
 class RankDeficiencyConfig:
-    """Settings of the rank-deficiency experiment. `rank` follows
-    `orbit_tools.resolve_rank` and must resolve to less than min(m, n)
-    (e.g. -1 for min(m, n) - 1); the r nonzero singular values are log-spaced
-    in [smin, 1]. `tol` is the stopping tolerance on ||X_{k+1} - X_k||_F
-    (None: `orbit_tools.default_tol`); once reached the iterate is frozen, so
-    rounding noise in the null space is not amplified. `rank_tol` is the
-    threshold, relative to the largest singular value, under which a singular
-    value of X_k counts as zero (None: `eps`). `degrees` is the only
-    list-valued field.
+    """
+    m, n: matrix shape
+    rank: see orbit_tools.resolve_rank; must be below full (e.g. -1)
+    smin: smallest nonzero singular value
+    degrees: degrees to compare
+    eps: accuracy for the first-hit step
+    k_max: steps
+    tol: early-stop step size (None = orbit_tools.default_tol)
+    rank_tol: relative cutoff for "zero" singular values (None = eps)
+    dtype: precision
+    device: cpu or cuda
+    seed: RNG seed
+    Note: the early stop freezes the iterate so rounding noise in the null space is not amplified
     """
 
     m: int = 128
@@ -39,9 +42,10 @@ class RankDeficiencyConfig:
 
 
 def run_rank_deficiency(cfg: RankDeficiencyConfig) -> dict[str, dict[int, torch.Tensor]]:
-    """Runs every degree in cfg.degrees on one rank-r matrix; returns
-    {"error": {D: e_0..e_kmax}, "rank": {D: numerical rank of X_0..X_kmax},
-    "iterations": {D: first k with error <= eps, or None}}.
+    """
+    cfg: settings
+    Returns: {"error": {D: error per step}, "rank": {D: numerical rank per step},
+    "iterations": {D: first step with error <= eps, or None}}
     """
     r = orbit_tools.resolve_rank(cfg.m, cfg.n, cfg.rank)
     if r == min(cfg.m, cfg.n):

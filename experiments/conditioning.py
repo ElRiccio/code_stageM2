@@ -1,5 +1,5 @@
-"""Conditioning experiment: one matrix with a given smin, the error decay for
-several degrees D and the iteration count against the predicted K_D."""
+"""Conditioning experiment: how a small smallest singular value slows the
+iteration, and how the observed step count compares with the predicted K_D."""
 
 from __future__ import annotations
 
@@ -12,9 +12,16 @@ from ns_core import orbit_tools, profiles
 
 @dataclass
 class ConditioningConfig:
-    """Settings of the conditioning experiment. `eps` is the accuracy at which
-    the observed and predicted iteration counts are read; `degrees` is the
-    only list-valued field.
+    """
+    m, n: matrix shape
+    rank: see orbit_tools.resolve_rank (None = full)
+    smin: smallest nonzero singular value
+    degrees: degrees to compare
+    eps: accuracy at which step counts are read
+    k_max: steps
+    dtype: precision
+    device: cpu or cuda
+    seed: RNG seed
     """
 
     m: int = 128
@@ -30,9 +37,10 @@ class ConditioningConfig:
 
 
 def run_conditioning(cfg: ConditioningConfig) -> dict[str, dict[int, object]]:
-    """Runs every degree in cfg.degrees on one matrix; returns
-    {"error": {D: e_0..e_kmax}, "predicted": {D: K_D(smin, eps)},
-    "iterations": {D: first k with error <= eps, or None}}.
+    """
+    cfg: settings
+    Returns: {"error": {D: error at steps 0..k_max},
+    "predicted": {D: K_D}, "iterations": {D: first step with error <= eps, or None}}
     """
     M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
     error, predicted, iterations = {}, {}, {}

@@ -1,13 +1,9 @@
-"""Profiles built from the series B_infinity(t) = (1 - t)^(-1/2) in the
-residual variable t = 1 - x^2.
+"""Closed-form quantities for the iteration polynomials: the truncated series
+family (coefficients, basin radius, iteration count) and the admissible
+quintics (coefficients, slopes, order and constant of convergence).
 
-Truncated family: the coefficients c_j of B_D, its evaluation, the basin
-radius R_D = sqrt(1 - t_D) and the iteration count K_D.
-Admissible quintics p(x) = x (1 + r1 t + r2 t^2): the x-polynomial
-coefficients, the constant bmax, the slopes at 0 and 1, the extremal slope,
-and the order of convergence with its constant. Coefficient tensors have the
-layout of `ns_iteration.bpoly_coeffs`, so `ns_iteration.ns_step_matrix` runs
-them directly.
+Coefficient tensors use the same layout as `ns_iteration.bpoly_coeffs`, so
+`ns_iteration.ns_step_matrix` accepts them directly.
 """
 
 from __future__ import annotations
@@ -35,8 +31,10 @@ def truncated_series_coeffs(
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> torch.Tensor:
-    """Ascending coefficients c_0, ..., c_D of B_D, the degree-D truncation
-    of (1 - t)^(-1/2).
+    """
+    D: degree
+    dtype, device: output type and place
+    Returns: series coefficients, ascending
     """
     if D < 0:
         raise ValueError("D must be nonnegative")
@@ -45,8 +43,10 @@ def truncated_series_coeffs(
 
 
 def truncated_series_eval(t: torch.Tensor, D: int) -> torch.Tensor:
-    """B_D(t) = sum_{j<=D} c_j t^j by Horner's rule; shape, dtype and device
-    follow `t`.
+    """
+    t: points
+    D: degree
+    Returns: truncated series value, same shape as t
     """
     coeffs = truncated_series_coeffs(D, dtype=t.dtype, device=t.device)
     out = torch.zeros_like(t)
@@ -56,10 +56,9 @@ def truncated_series_eval(t: torch.Tensor, D: int) -> torch.Tensor:
 
 
 def basin_radius(D: int) -> tuple[float, float]:
-    """(R_D, t_D): the basin radius R_D = sqrt(1 - t_D), where t_D is the
-    largest negative real root of Xi_D. Xi_D is B_D for odd D and B_D without
-    its constant term for even D. The roots are the eigenvalues of the
-    companion matrix of Xi_D.
+    """
+    D: degree (>= 1)
+    Returns: basin radius R_D, root t_D behind it
     """
     if D < 1:
         raise ValueError("the radius is defined for D >= 1")
@@ -79,8 +78,11 @@ def basin_radius(D: int) -> tuple[float, float]:
 
 
 def iteration_count_bound(D: int, theta: float, eps: float) -> int:
-    """K_D: the number of steps of p_D after which |u_k - 1| <= eps, for a
-    start with residual theta = 1 - u_0^2. Both theta and eps lie in (0, 1).
+    """
+    D: degree
+    theta: starting residual in (0, 1)
+    eps: target accuracy in (0, 1)
+    Returns: K_D, steps that guarantee the target
     """
     theta, eps = float(theta), float(eps)
     if not 0.0 < theta < 1.0 or not 0.0 < eps < 1.0:
@@ -97,31 +99,35 @@ def iteration_count_bound(D: int, theta: float, eps: float) -> int:
 
 
 def quintic_coeffs(r1: torch.Tensor, r2: torch.Tensor) -> torch.Tensor:
-    """Coefficients a[0..2] of p(x) = a0 x + a1 x^3 + a2 x^5 for the residual
-    coefficients (r1, r2): a = (1 + r1 + r2, -(r1 + 2 r2), r2). Inputs
-    broadcast; the result has shape (..., 3) on the inputs' device and dtype.
+    """
+    r1, r2: quintic parameters (broadcast together)
+    Returns: coefficients, shape (..., 3)
     """
     r1, r2 = torch.broadcast_tensors(r1, r2)
     return torch.stack([1.0 + r1 + r2, -(r1 + 2.0 * r2), r2], dim=-1)
 
 
 def quintic_slope_origin(r1: torch.Tensor, r2: torch.Tensor) -> torch.Tensor:
-    """p'(0) = 1 + r1 + r2, the factor applied to the smallest singular
-    values in the first step.
+    """
+    r1, r2: quintic parameters
+    Returns: slope at 0
     """
     return 1.0 + r1 + r2
 
 
 def quintic_slope_one(r1: torch.Tensor) -> torch.Tensor:
-    """p'(1) = 1 - 2 r1.
+    """
+    r1: quintic parameter
+    Returns: slope at 1
     """
     return 1.0 - 2.0 * r1
 
 
 def quintic_order(r1: torch.Tensor, r2: torch.Tensor) -> torch.Tensor:
-    """Order of convergence u_k -> 1 (1, 2 or 3, as an int64 tensor) for an
-    admissible quintic: 1 if r1 < 1/2, 2 if r1 = 1/2 and r2 != 3/8, and 3 for
-    (r1, r2) = (1/2, 3/8). The cases are selected by exact comparison.
+    """
+    r1, r2: quintic parameters
+    Returns: convergence order (1, 2 or 3), int64
+    Note: exact float comparison picks the case
     """
     r1, r2 = torch.broadcast_tensors(r1, r2)
     is_p2 = (r1 == 0.5) & (r2 == 0.375)
@@ -130,8 +136,9 @@ def quintic_order(r1: torch.Tensor, r2: torch.Tensor) -> torch.Tensor:
 
 
 def quintic_error_constant(r1: torch.Tensor, r2: torch.Tensor) -> torch.Tensor:
-    """Asymptotic error constant of `quintic_order`: 1 - 2 r1 for order 1,
-    3/2 - 4 r2 for order 2 and 5/2 for order 3.
+    """
+    r1, r2: quintic parameters
+    Returns: error constant for that convergence order
     """
     r1, r2 = torch.broadcast_tensors(r1, r2)
     order = quintic_order(r1, r2)

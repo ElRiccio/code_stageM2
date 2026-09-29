@@ -1,11 +1,8 @@
-"""Random test matrices: Gaussian and symmetric draws, semi-orthogonal
-factors, matrices with a prescribed spectrum, and rank-deficient or
-ill-conditioned matrices.
+"""Random test matrices: Gaussian, symmetric, prescribed spectrum, rank-deficient
+or ill-conditioned.
 
-Prescribed-spectrum and rank-deficient matrices are assembled from an
-orthogonal or SVD frame with the singular values set directly. Every
-function takes an explicit torch.Generator and explicit device/dtype
-keywords (defaults: CPU, float32); the generator lives on `device`.
+Every function takes a torch.Generator (on the same device) plus device and
+dtype keywords, defaulting to CPU and float32.
 """
 
 from __future__ import annotations
@@ -21,7 +18,11 @@ def rand_gaussian(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """m x n matrix with i.i.d. standard normal entries (full rank almost surely).
+    """
+    m, n: shape
+    generator: RNG
+    device, dtype: where and how to store
+    Returns: matrix of standard normal entries
     """
     return torch.randn(m, n, generator=generator, device=device, dtype=dtype)
 
@@ -34,9 +35,11 @@ def rand_orthogonal_factor(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Semi-orthogonal q x k factor (q >= k) from the QR of a Gaussian block,
-    with the diagonal of R made nonnegative so equal generator states give
-    equal factors.
+    """
+    q, k: shape (q >= k)
+    generator: RNG
+    device, dtype: where and how to store
+    Returns: q x k matrix with orthonormal columns
     """
     if k > q:
         raise ValueError("need q >= k for a semi-orthogonal q x k factor")
@@ -55,8 +58,12 @@ def rand_symmetric(
     dtype: torch.dtype = torch.float32,
     normalize: bool = True,
 ) -> torch.Tensor:
-    """Symmetric n x n matrix 0.5 * (A + A^T) for Gaussian A; with
-    `normalize` it is rescaled to spectral norm 1.
+    """
+    n: size
+    generator: RNG
+    device, dtype: where and how to store
+    normalize: scale to spectral norm 1
+    Returns: random symmetric matrix
     """
     A = rand_gaussian(n, n, generator=generator, device=device, dtype=dtype)
     S = 0.5 * (A + A.T)
@@ -76,8 +83,12 @@ def rand_prescribed_spectrum(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """U diag(sigma) V^T for random semi-orthogonal U (m x r) and V (n x r),
-    r = len(sigma): a matrix whose singular values are exactly `sigma`.
+    """
+    m, n: shape
+    sigma: wanted singular values
+    generator: RNG
+    device, dtype: where and how to store
+    Returns: matrix with exactly those singular values
     """
     r = sigma.numel()
     if r > min(m, n):
@@ -100,9 +111,15 @@ def rand_rank_deficient(
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Gaussian matrix whose `n_zero` smallest singular values are set to 0
-    and the next `n_small` smallest to `s_small`. With `normalize`, the
-    singular values are first scaled so the largest is 1.
+    """
+    m, n: shape
+    generator: RNG
+    n_zero: singular values set to 0
+    n_small: next ones set to s_small
+    s_small: their value
+    normalize: scale largest singular value to 1 first
+    device, dtype: where and how to store
+    Returns: Gaussian matrix with a damaged tail spectrum
     """
     if n_zero < 0 or n_small < 0:
         raise ValueError("n_zero and n_small must be nonnegative")

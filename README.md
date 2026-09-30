@@ -35,6 +35,7 @@ that is.
 | `exp7_cpwl_svd_timing` | `cpwl_svd_timing.py` | exp4's timing, applied to the CPWL operator |
 | `exp8_cpwl_time_to_accuracy` | `cpwl_time_to_accuracy.py` | exp5's timing, applied to the CPWL operator |
 | `exp9_polynomial_comparison` | `polynomial_comparison.py` | Muon, Björck and max-derivative quintics: error per step and the spectrum heading to the sign; also the CPWL operator built on each polynomial (error per step, output spectrum) |
+| `exp10_step_cost` | `step_cost.py` | Time of one Newton-Schulz step against the degree (plain and Gram-based step) |
 
 A few things worth knowing:
 
@@ -65,6 +66,11 @@ A few things worth knowing:
   reaches `cfg.eps`; one that doesn't get there within `cfg.k_max` is flagged
   as not converged rather than stopping the run. exp8 can also time the exact
   SVD version as a horizontal reference line.
+- **Optional SVD in exp4 and exp7.** `run_svd=False` drops every SVD call:
+  no SVD timing and no exact reference, so Newton-Schulz is timed but its
+  errors are `None` (tables show `-`, the accuracy and speedup tables are
+  skipped). `svd_only=True` does the opposite and times only the SVD (needs
+  `run_svd`), so tables and plots show just the SVD column/curve.
 - **Progress vs tables.** With `verbose=True` the timing experiments only
   print one progress line per (n, smin); all results are in tables.
   - exp4: time, speedup over the SVD, iterations K, error, and time against

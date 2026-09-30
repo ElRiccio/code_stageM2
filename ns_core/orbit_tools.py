@@ -56,14 +56,16 @@ def make_instance(
     seed: int,
     *,
     device: torch.device | str = "cpu",
-) -> tuple[torch.Tensor, torch.Tensor]:
+    with_sign: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     m, n: shape
     rank: see resolve_rank
     smin: smallest nonzero singular value
     seed: RNG seed
     device: where to build it
-    Returns: matrix M, its exact sign N
+    with_sign: also compute the exact sign (one SVD)
+    Returns: matrix M, its exact sign N (None if with_sign is False)
     """
     r = resolve_rank(m, n, rank)
     g = torch.Generator(device=device)
@@ -72,7 +74,7 @@ def make_instance(
     M = matrices.rand_prescribed_spectrum(
         m, n, sigma, generator=g, device=device, dtype=torch.float64
     )
-    return M, sign_map.sgn_svd(M)
+    return M, sign_map.sgn_svd(M) if with_sign else None
 
 
 def default_eps(dtype: torch.dtype) -> float:

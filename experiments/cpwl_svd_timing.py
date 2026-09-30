@@ -30,6 +30,8 @@ class CPWLSvdTimingConfig:
     k_max: step cap per sign call
     power_iters: norm-estimate steps
     power_margin: norm safety factor
+    run_svd: time the SVD-based operator and measure errors against the exact one (False = Newton-Schulz times only, no errors)
+    svd_only: time only the SVD-based operator, skip Newton-Schulz
     time_unit: "ms" or "s" in the results table
     time_round_digits: decimals of the table time
     n_warmup: untimed calls, first matrix only
@@ -62,6 +64,8 @@ class CPWLSvdTimingConfig:
     n_warmup: int = 3
     n_reps: int = 20
     cpu_threads: int | None = None
+    run_svd: bool = True
+    svd_only: bool = False
     seed: int = 0
     verbose: bool = True
 
@@ -71,11 +75,14 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
     cfg: settings
     Returns: {"cfg", "cells": {(device, n, smin): {"svd": {"time", "error"},
     "ns": {D: {"time", "error", "calls", "K", "reached"}}}}}
-    Note: time and error are {median, mean, std} over matrices (error is relative
+    Note: "svd" is None if run_svd is False, "ns" is empty if svd_only, and errors are then None; time and error are {median, mean, std} over matrices (error is relative
     Frobenius vs the exact float64 operator of the unrounded matrix, so "svd" is the
     dtype SVD-based evaluation's own error); calls = mean internal sign calls, K = largest
     step count any call needed, reached = fraction of matrices where every call hit eps
     """
+    if cfg.svd_only and not cfg.run_svd:
+        raise ValueError("svd_only needs run_svd")
+    degrees = [] if cfg.svd_only else cfg.degrees
     scalar_fn, sign_form = resolve_profile(cfg)
     generators = {}
     for device in cfg.devices:
@@ -90,27 +97,27 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
         for i, (n, smin) in enumerate(blocks, 1):
             if cfg.verbose:
                 print(f"[{i}/{len(blocks)}] n={n} smin={smin:g} ({cfg.n_reps} matrices)")
-            routes = ["svd", *cfg.degrees]
+            routes = ["svd", *degrees]
             samples = {
                 d: {r: {"time": [], "error": [], "calls": [], "K": [], "reached": []} for r in routes}
                 for d in cfg.devices
             }
             for rep in range(cfg.n_reps):
-                M64, _ = orbit_tools.make_instance(n, n, None, smin, cfg.seed + rep)
+                M64, _ = orbit_tools.make_instance(n, n, None, smin, cfg.seed + rep, with_sign=False)
                 warm = cfg.n_warmup if rep == 0 else 0
                 for device in cfg.devices:
                     M = M64.to(device=device, dtype=cfg.dtype)
-                    Y_exact = spectral_reference(M64.to(device), scalar_fn)[-1]
+                    if cfg.run_svd:
+                        Y_exact = spectral_reference(M64.to(device), scalar_fn)[-1]
+                        for _ in range(warm):
+                            timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
+                        t, Y = timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
+                        samples[device]["svd"]["time"].append(t)
+                        samples[device]["svd"]["error"].append(
+                            float(metrics.relative_frobenius_error(Y.double(), Y_exact))
+                        )
 
-                    for _ in range(warm):
-                        timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
-                    t, Y = timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
-                    samples[device]["svd"]["time"].append(t)
-                    samples[device]["svd"]["error"].append(
-                        float(metrics.relative_frobenius_error(Y.double(), Y_exact))
-                    )
-
-                    for D in cfg.degrees:
+                    for D in degrees:
                         for _ in range(warm):
                             warm_stats: list[tuple[int, bool]] = []
                             sgn_warm = sign_map.make_sgn_ns_until(
@@ -126,23 +133,28 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
                         t, Y = timing.time_call(lambda: sign_form(M, sgn), device, 0)
                         s = samples[device][D]
                         s["time"].append(t)
-                        s["error"].append(float(metrics.relative_frobenius_error(Y.double(), Y_exact)))
+                        if cfg.run_svd:
+                            s["error"].append(float(metrics.relative_frobenius_error(Y.double(), Y_exact)))
                         s["calls"].append(float(len(stats)))
                         s["K"].append(float(max(k for k, _ in stats)) if stats else 0.0)
                         s["reached"].append(float(all(r for _, r in stats)))
             for device in cfg.devices:
                 s = samples[device]
                 cells[device, n, smin] = {
-                    "svd": {"time": timing.describe(s["svd"]["time"]), "error": timing.describe(s["svd"]["error"])},
+                    "svd": (
+                        {"time": timing.describe(s["svd"]["time"]), "error": timing.describe(s["svd"]["error"])}
+                        if cfg.run_svd
+                        else None
+                    ),
                     "ns": {
                         D: {
                             "time": timing.describe(s[D]["time"]),
-                            "error": timing.describe(s[D]["error"]),
+                            "error": timing.describe(s[D]["error"]) if cfg.run_svd else None,
                             "calls": timing.describe(s[D]["calls"])["mean"],
                             "K": int(max(s[D]["K"])) if s[D]["K"] else 0,
                             "reached": sum(s[D]["reached"]) / cfg.n_reps,
                         }
-                        for D in cfg.degrees
+                        for D in degrees
                     },
                 }
     finally:
@@ -162,16 +174,16 @@ def cpwl_results_table(res: dict[str, object], device: str, n: int, smin: float)
     cell = cells[device, n, smin]
     scale = 1e3 if cfg.time_unit == "ms" else 1.0
     rows = []
-    for D in sorted(cfg.degrees):
+    for D in sorted(cell["ns"]):
         c = cell["ns"][D]
         t = round(scale * c["time"]["median"], cfg.time_round_digits)
         mark = "" if c["reached"] == 1.0 else "*"
-        rows.append(
-            [f"D={D}", f"{c['error']['mean']:.2e}", f"{t:g} {cfg.time_unit}{mark}", f"{c['calls']:.1f}", str(c["K"])]
-        )
+        err = f"{c['error']['mean']:.2e}" if c["error"] else "-"
+        rows.append([f"D={D}", err, f"{t:g} {cfg.time_unit}{mark}", f"{c['calls']:.1f}", str(c["K"])])
     svd = cell["svd"]
-    t = round(scale * svd["time"]["median"], cfg.time_round_digits)
-    rows.append(["SVD", f"{svd['error']['mean']:.2e}", f"{t:g} {cfg.time_unit}", "-", "-"])
+    if svd:
+        t = round(scale * svd["time"]["median"], cfg.time_round_digits)
+        rows.append(["SVD", f"{svd['error']['mean']:.2e}", f"{t:g} {cfg.time_unit}", "-", "-"])
     _print_table(
         f"CPWL operator ({cfg.profile}), tolerance eps = {cfg.eps:g}, mean/max over {cfg.n_reps} matrices: "
         f"{device}, n = {n}, smin = {smin:g}",

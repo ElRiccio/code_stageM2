@@ -125,10 +125,12 @@ def plot_time_vs_size(res: dict, device: str, smin: float, ax=None):
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
     sizes = sorted(cfg.sizes)
+    degrees = [] if cfg.svd_only else cfg.degrees
     colors = _colors(cfg.degrees)
-    for D in sorted(cfg.degrees):
+    for D in sorted(degrees):
         _time_curve(ax, sizes, [cells[device, n, smin]["ns"][D]["time"] for n in sizes], colors[D], f"NS, D={D}")
-    _time_curve(ax, sizes, [cells[device, n, smin]["svd"]["time"] for n in sizes], "k", "SVD", ls="--")
+    if cfg.run_svd:
+        _time_curve(ax, sizes, [cells[device, n, smin]["svd"]["time"] for n in sizes], "k", "SVD", ls="--")
     ax.set_xlabel("size $n$")
     ax.set_ylabel("time (s)")
     ax.set_title(f"{device}, $\\sigma_{{\\min}}$ = {smin:g}")
@@ -147,8 +149,9 @@ def plot_time_vs_smin(res: dict, device: str, n: int, ax=None):
     ax = _axis(ax)
     cfg, cells = res["cfg"], res["cells"]
     smins = sorted(cfg.smins)
+    degrees = [] if cfg.svd_only else cfg.degrees
     colors = _colors(cfg.degrees)
-    for D in sorted(cfg.degrees):
+    for D in sorted(degrees):
         _time_curve(ax, smins, [cells[device, n, s]["ns"][D]["time"] for s in smins], colors[D], f"NS, D={D}")
         for s in smins:
             ax.annotate(
@@ -156,7 +159,8 @@ def plot_time_vs_smin(res: dict, device: str, n: int, ax=None):
                 (s, cells[device, n, s]["ns"][D]["time"]["median"]),
                 textcoords="offset points", xytext=(0, 5), ha="center", fontsize=7, color=colors[D],
             )
-    _time_curve(ax, smins, [cells[device, n, s]["svd"]["time"] for s in smins], "k", "SVD", ls="--")
+    if cfg.run_svd:
+        _time_curve(ax, smins, [cells[device, n, s]["svd"]["time"] for s in smins], "k", "SVD", ls="--")
     ax.set_xlabel("$\\sigma_{\\min}$")
     ax.set_ylabel("time (s)")
     ax.set_title(f"{device}, $n$ = {n} (labels: $K_D$)")
@@ -208,6 +212,30 @@ def plot_time_vs_degree(
         )
     if label is not None:
         ax.legend(fontsize=8)
+    return ax
+
+
+def plot_step_cost_vs_degree(res: dict, device: str, n: int, ax=None):
+    """
+    res: output of run_step_cost
+    device: which device's timings
+    n: which size
+    ax: axis to draw on
+    Returns: the axis (median time of one step vs degree, plain and Gram-based step, ±std bars)
+    """
+    ax = _axis(ax)
+    degrees = sorted(res["cfg"].degrees)
+    cell = res["cells"][device, n]
+    for variant, label in (("matrix", "plain step"), ("gram", "Gram step")):
+        ax.errorbar(
+            degrees, [cell[D][variant]["median"] for D in degrees],
+            yerr=[cell[D][variant]["std"] for D in degrees], marker="o", ms=4, capsize=3, label=label,
+        )
+    ax.set_xticks(degrees)
+    ax.set_xlabel("degree $D$")
+    ax.set_ylabel("time per step (s)")
+    ax.set_title(f"{device}, $n$ = {n}")
+    ax.legend(fontsize=8)
     return ax
 
 

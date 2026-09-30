@@ -32,7 +32,8 @@ and the spectral operators you can build from them.
   matrix with log-spaced singular values plus its exact sign, running the
   iteration, and measuring errors, ranks and the first step below a target.
   `run_orbit` freezes the iterate once its error reaches `eps`, so noise in the
-  null space of a rank-deficient matrix is not amplified afterwards.
+  null space of a rank-deficient matrix is not amplified afterwards. It takes
+  either a degree or explicit `coeffs`, so any odd polynomial can be run.
 - `plots.py` has the plotting helpers, all taking an optional axis: error
   curves, the e_{k+1} vs e_k map, rank curves, spectra, and the timing plots
   (time vs n, vs smin, vs degree). The time-vs-degree plot draws the exact-SVD

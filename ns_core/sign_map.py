@@ -167,15 +167,17 @@ def make_sgn_ns_until(
 
 
 def make_sgn_ns(
-    D: int,
+    D: int | None,
     n_iters: int,
     *,
     scale: torch.Tensor | float | None = None,
+    coeffs: torch.Tensor | None = None,
 ) -> msgn:
     """
-    D: degree
+    D: degree (None if coeffs given)
     n_iters: steps
     scale: divisor for M (default: spectral norm, recomputed per call)
+    coeffs: custom odd polynomial
     Returns: msgn function (matrix -> sign)
     """
 
@@ -184,10 +186,14 @@ def make_sgn_ns(
         s = torch.as_tensor(s, dtype=M.dtype, device=M.device)
         if s <= 0:
             return torch.zeros_like(M)
-        coeffs = ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
+        c = (
+            ns_iteration.bpoly_coeffs(D, dtype=M.dtype, device=M.device)
+            if coeffs is None
+            else coeffs.to(device=M.device, dtype=M.dtype)
+        )
         X = M / s
         for _ in range(n_iters):
-            X = ns_iteration.ns_step_matrix(X, coeffs)
+            X = ns_iteration.ns_step_matrix(X, c)
         return X
 
     return msgn

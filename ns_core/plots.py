@@ -22,6 +22,10 @@ def _np(t: torch.Tensor):
     return t.detach().cpu().numpy()
 
 
+def _label(labels: dict | None, key, default: str) -> str:
+    return default if labels is None else labels.get(key, default)
+
+
 def _colors(degrees) -> dict:
     cycle = plt.get_cmap("tab10")
     return {D: cycle(i % 10) for i, D in enumerate(sorted(degrees))}
@@ -33,6 +37,7 @@ def plot_error_curves(
     eps: float | None = None,
     predicted: dict[int, int] | None = None,
     ylabel: str | None = None,
+    labels: dict | None = None,
 ):
     """
     errors: error curve per degree
@@ -40,6 +45,7 @@ def plot_error_curves(
     eps: target level, marks the first step below it
     predicted: K_D per degree, drawn as dashed vertical lines
     ylabel: replaces the default y label
+    labels: legend text per key (default "D=key")
     Returns: the axis
     """
     ax = _axis(ax)
@@ -53,7 +59,7 @@ def plot_error_curves(
             k = orbit_tools.first_hit(e, eps)
             if k is not None:
                 ax.plot(k, float(e[k]), "s", ms=9, mfc="none", color=colors[D])
-    handles = [Line2D([], [], color=colors[D], marker="o", ms=3, label=f"D={D}") for D in sorted(errors)]
+    handles = [Line2D([], [], color=colors[D], marker="o", ms=3, label=_label(labels, D, f"D={D}")) for D in sorted(errors)]
     if eps is not None:
         ax.axhline(eps, color="gray", ls=":")
         handles.append(Line2D([], [], color="k", marker="s", mfc="none", ls="", label="first k with error $\\leq \\varepsilon$"))
@@ -252,6 +258,7 @@ def plot_spectrum(
     coords: dict[int, torch.Tensor],
     ax=None,
     xaxis: str = "sigma",
+    labels: dict | None = None,
 ):
     """
     sigma: input singular values
@@ -259,6 +266,7 @@ def plot_spectrum(
     coords: output spectrum per iteration count k
     ax: axis to draw on
     xaxis: "sigma" (values) or "index" (rank order)
+    labels: legend text per key (default "k=key")
     Returns: the axis
     """
     ax = _axis(ax)
@@ -273,7 +281,7 @@ def plot_spectrum(
     ax.plot(x, _np(s), ":", color="0.35", lw=1.2, label="$\\sigma_i(M)$")
     colors = _colors(coords)
     for k in sorted(coords):
-        ax.plot(x, _np(coords[k][order]), lw=1.0, color=colors[k], label=f"k={k}")
+        ax.plot(x, _np(coords[k][order]), lw=1.0, color=colors[k], label=_label(labels, k, f"k={k}"))
     ax.plot(x, _np(target[order]), "k--", lw=1.3, label="exact (SVD)")
     ax.set_xlabel(xlabel)
     ax.set_ylabel("spectral coordinate")

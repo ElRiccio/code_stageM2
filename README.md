@@ -34,11 +34,12 @@ that is.
 | `exp6_cpwl_operator` | `cpwl_operator.py` | The CPWL operator, built on the sign map, vs the exact one |
 | `exp7_cpwl_svd_timing` | `cpwl_svd_timing.py` | exp4's timing, applied to the CPWL operator |
 | `exp8_cpwl_time_to_accuracy` | `cpwl_time_to_accuracy.py` | exp5's timing, applied to the CPWL operator |
+| `exp9_polynomial_comparison` | `polynomial_comparison.py` | Muon, Björck and max-derivative quintics: error per step and the spectrum heading to the sign; also the CPWL operator built on each polynomial (error per step, output spectrum) |
 
 A few things worth knowing:
 
 - **Two ways to stop.** The experiments that compare against the exact sign
-  (exp1, exp2, exp3, exp6) know the error at every step, so once it reaches
+  (exp1, exp2, exp3, exp6, exp9) know the error at every step, so once it reaches
   `eps` the iterate is frozen and its error is held until `k_max`. The timing
   experiments (exp4, exp5, exp7, exp8) can't afford that reference, so they stop
   on a residual instead, `||X (X^T X - I)||_F <= eps sqrt(r)`. It is zero at

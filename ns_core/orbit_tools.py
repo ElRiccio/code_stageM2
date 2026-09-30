@@ -86,18 +86,21 @@ def default_eps(dtype: torch.dtype) -> float:
 def run_orbit(
     M: torch.Tensor,
     N: torch.Tensor,
-    D: int,
+    D: int | None,
     k_max: int,
     dtype: torch.dtype,
     eps: float | None = None,
+    *,
+    coeffs: torch.Tensor | None = None,
 ) -> tuple[list[torch.Tensor], torch.Tensor]:
     """
     M: input matrix (largest singular value 1)
     N: exact sign of M
-    D: degree
+    D: degree (None if coeffs given)
     k_max: steps
     dtype: precision to run in
     eps: freeze precision (None = default_eps)
+    coeffs: custom odd polynomial
     Returns: list of k_max + 1 iterates in float64, spectral-norm error per iterate
     Note: once the error is <= eps the iterate and its error are held to k_max, so
     rounding noise in the null space is never amplified; below default_eps it never fires
@@ -106,7 +109,10 @@ def run_orbit(
         eps = default_eps(dtype)
     elif eps < default_eps(dtype):
         warnings.warn(f"eps={eps:g} is below the {dtype} floor, so the freeze may never fire")
-    coeffs = ns_iteration.bpoly_coeffs(D, dtype=dtype, device=M.device)
+    if coeffs is None:
+        coeffs = ns_iteration.bpoly_coeffs(D, dtype=dtype, device=M.device)
+    else:
+        coeffs = coeffs.to(device=M.device, dtype=dtype)
     X = M.to(dtype)
     orbit, errors = [], []
     frozen = False

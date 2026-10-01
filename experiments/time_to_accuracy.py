@@ -1,5 +1,5 @@
 """Time-to-accuracy experiment: how long the Newton-Schulz sign takes to reach a
-target accuracy, across size, smallest singular value, device, precision and
+target accuracy, across size, condition number, device, precision and
 degree. Can also time the exact SVD sign as a reference.
 
 Uses the same random matrices as the SVD timing experiment.
@@ -20,7 +20,8 @@ from ns_core import matrices, metrics, orbit_tools, sign_map, timing
 class TimeToAccuracyConfig:
     """
     sizes: matrix sizes n (square, full rank)
-    smins: smallest singular values to try
+    conds: condition numbers (largest over smallest singular value) to try
+    sigma_max: largest singular value
     degrees: degrees to compare
     devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
     dtypes: precisions to try
@@ -31,17 +32,18 @@ class TimeToAccuracyConfig:
     power_iters: norm-estimate steps
     power_margin: norm safety factor
     n_warmup: untimed calls, first matrix only
-    n_reps: random matrices per (n, smin)
+    n_reps: random matrices per (n, cond)
     cpu_threads: torch threads (None = default)
     seed: RNG seed of the first matrix, then +1 each
-    verbose: print progress (one line per n, smin)
+    verbose: print progress (one line per n, cond)
     Note: a run stops when the residual is below eps (bounds the relative Frobenius
     error); hitting k_max is flagged, and eps below rounding level (~1e-6 in float32)
     will not be reached; timing includes pre-scaling and the residual check
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
-    smins: list[float] = field(default_factory=lambda: [1e-1, 1e-2, 1e-3, 1e-4])
+    conds: list[float] = field(default_factory=lambda: [1e1, 1e2, 1e3, 1e4])
+    sigma_max: float = 1.0
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     devices: list[str] = field(default_factory=lambda: ["cpu", "cuda"])
     dtypes: list[torch.dtype] = field(default_factory=lambda: [torch.float32, torch.float64])
@@ -61,8 +63,8 @@ class TimeToAccuracyConfig:
 def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
     """
     cfg: settings
-    Returns: {"cfg", "cells": {(device, dtype, n, smin, eps): {D: {"time", "K", "reached", "error"}}},
-    "svd": {(device, dtype, n, smin): time stats}}
+    Returns: {"cfg", "cells": {(device, dtype, n, cond, eps): {D: {"time", "K", "reached", "error"}}},
+    "svd": {(device, dtype, n, cond): time stats}}
     Note: time, K and error are {median, mean, std} over matrices; error is relative
     Frobenius vs the exact sign, measured outside the timer, and absent unless measure_error
     is on; reached is the fraction that hit eps within k_max; "svd" is empty unless
@@ -77,14 +79,14 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
         torch.set_num_threads(cfg.cpu_threads)
     cells, svd_cells = {}, {}
     try:
-        blocks = list(itertools.product(cfg.sizes, cfg.smins))
-        for i, (n, smin) in enumerate(blocks, 1):
+        blocks = list(itertools.product(cfg.sizes, cfg.conds))
+        for i, (n, cond) in enumerate(blocks, 1):
             if cfg.verbose:
-                print(f"[{i}/{len(blocks)}] n={n} smin={smin:g} ({cfg.n_reps} matrices)")
+                print(f"[{i}/{len(blocks)}] n={n} cond={cond:g} ({cfg.n_reps} matrices)")
             runs = list(itertools.product(cfg.devices, cfg.dtypes, cfg.eps, cfg.degrees))
             samples = {r: {"time": [], "K": [], "reached": [], "error": []} for r in runs}
             svd_samples = {(device, dtype): [] for device, dtype in itertools.product(cfg.devices, cfg.dtypes)}
-            sigma = orbit_tools.log_spectrum(n, smin)
+            sigma = orbit_tools.log_spectrum(n, cond, cfg.sigma_max)
             for rep in range(cfg.n_reps):
                 g = torch.Generator()
                 g.manual_seed(cfg.seed + rep)
@@ -111,7 +113,7 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
                         if cfg.measure_error:
                             s["error"].append(float(metrics.relative_frobenius_error(X.double(), N64.to(device))))
             for device, dtype, eps in itertools.product(cfg.devices, cfg.dtypes, cfg.eps):
-                cells[device, dtype, n, smin, eps] = {
+                cells[device, dtype, n, cond, eps] = {
                     D: {
                         "time": timing.describe(samples[device, dtype, eps, D]["time"]),
                         "K": timing.describe(samples[device, dtype, eps, D]["K"]),
@@ -126,30 +128,30 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
                 }
             if cfg.svd_reference_line:
                 for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
-                    svd_cells[device, dtype, n, smin] = timing.describe(svd_samples[device, dtype])
+                    svd_cells[device, dtype, n, cond] = timing.describe(svd_samples[device, dtype])
     finally:
         if cfg.cpu_threads is not None:
             torch.set_num_threads(threads)
     return {"cfg": cfg, "cells": cells, "svd": svd_cells}
 
 
-def _setting(res: dict[str, object], device: str, dtype: torch.dtype, smin: float) -> str:
+def _setting(res: dict[str, object], device: str, dtype: torch.dtype, cond: float) -> str:
     """
     res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
-    device, dtype, smin: which setting
+    device, dtype, cond: which setting
     Returns: title tail naming the setting, with the operator first for the CPWL runs
     """
     cfg = res["cfg"]
-    tail = f"{device}, {str(dtype).removeprefix('torch.')}, smin = {smin:g}"
+    tail = f"{device}, {str(dtype).removeprefix('torch.')}, cond = {cond:g}"
     return f"CPWL operator ({cfg.profile}), {tail}" if hasattr(cfg, "profile") else tail
 
 
 def time_to_accuracy_table(
-    res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float
+    res: dict[str, object], device: str, dtype: torch.dtype, cond: float, eps: float
 ) -> None:
     """
     res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
-    device, dtype, smin, eps: which setting
+    device, dtype, cond, eps: which setting
     Returns: nothing, prints time (s) as median ± std, one row per size, one column per degree, plus SVD if it was timed
     Note: * marks a cell where some matrix missed eps
     """
@@ -159,27 +161,27 @@ def time_to_accuracy_table(
         return f"{c['time']['median']:.3g} ± {c['time']['std']:.2g}" + ("" if c["reached"] == 1.0 else "*")
 
     def fmt_svd(n):
-        s = svd[device, dtype, n, smin]
+        s = svd[device, dtype, n, cond]
         return f"{s['median']:.3g} ± {s['std']:.2g}"
 
     rows = [
         [str(n)]
-        + [fmt(cells[device, dtype, n, smin, eps][D]) for D in cfg.degrees]
+        + [fmt(cells[device, dtype, n, cond, eps][D]) for D in cfg.degrees]
         + ([fmt_svd(n)] if svd else [])
         for n in sorted(cfg.sizes)
     ]
     _print_table(
         f"time (s) to reach eps = {eps:g}, median ± std over {cfg.n_reps} matrices: "
-        f"{_setting(res, device, dtype, smin)}",
+        f"{_setting(res, device, dtype, cond)}",
         ["n"] + [f"D={D}" for D in cfg.degrees] + (["SVD"] if svd else []),
         rows,
     )
 
 
-def speedup_table(res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float) -> None:
+def speedup_table(res: dict[str, object], device: str, dtype: torch.dtype, cond: float, eps: float) -> None:
     """
     res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
-    device, dtype, smin, eps: which setting
+    device, dtype, cond, eps: which setting
     Returns: nothing, prints SVD median time / Newton-Schulz median time, one row per size, one column per degree
     Note: above 1 means Newton-Schulz is faster; needs svd_reference_line
     """
@@ -189,47 +191,47 @@ def speedup_table(res: dict[str, object], device: str, dtype: torch.dtype, smin:
     rows = [
         [str(n)]
         + [
-            f"{svd[device, dtype, n, smin]['median'] / cells[device, dtype, n, smin, eps][D]['time']['median']:.2f}x"
+            f"{svd[device, dtype, n, cond]['median'] / cells[device, dtype, n, cond, eps][D]['time']['median']:.2f}x"
             for D in cfg.degrees
         ]
         for n in sorted(cfg.sizes)
     ]
     _print_table(
-        f"speedup over the SVD at eps = {eps:g} (median times): {_setting(res, device, dtype, smin)}",
+        f"speedup over the SVD at eps = {eps:g} (median times): {_setting(res, device, dtype, cond)}",
         ["n"] + [f"D={D}" for D in cfg.degrees],
         rows,
     )
 
 
 def iterations_table(
-    res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float
+    res: dict[str, object], device: str, dtype: torch.dtype, cond: float, eps: float
 ) -> None:
     """
     res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
-    device, dtype, smin, eps: which setting
+    device, dtype, cond, eps: which setting
     Returns: nothing, prints steps K as median (mean), one row per size, one column per degree
     Note: for the CPWL operator K is the largest step count any internal call needed
     """
     cfg, cells = res["cfg"], res["cells"]
     fmt = lambda c: f"{c['K']['median']:g} ({c['K']['mean']:.2f})"
     rows = [
-        [str(n)] + [fmt(cells[device, dtype, n, smin, eps][D]) for D in cfg.degrees]
+        [str(n)] + [fmt(cells[device, dtype, n, cond, eps][D]) for D in cfg.degrees]
         for n in sorted(cfg.sizes)
     ]
     _print_table(
         f"iterations K to reach eps = {eps:g}, median (mean) over {cfg.n_reps} matrices: "
-        f"{_setting(res, device, dtype, smin)}",
+        f"{_setting(res, device, dtype, cond)}",
         ["n"] + [f"D={D}" for D in cfg.degrees],
         rows,
     )
 
 
 def time_per_step_table(
-    res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float
+    res: dict[str, object], device: str, dtype: torch.dtype, cond: float, eps: float
 ) -> None:
     """
     res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
-    device, dtype, smin, eps: which setting
+    device, dtype, cond, eps: which setting
     Returns: nothing, prints median time / median K in ms, one row per size, one column per degree
     Note: includes the pre-scaling; for the CPWL operator the time covers every internal sign call, so it is not a per-step cost
     """
@@ -240,20 +242,20 @@ def time_per_step_table(
         return f"{1e3 * c['time']['median'] / k:.3g}" if k > 0 else "-"
 
     rows = [
-        [str(n)] + [fmt(cells[device, dtype, n, smin, eps][D]) for D in cfg.degrees]
+        [str(n)] + [fmt(cells[device, dtype, n, cond, eps][D]) for D in cfg.degrees]
         for n in sorted(cfg.sizes)
     ]
     _print_table(
-        f"time per step (ms) to reach eps = {eps:g}, median time / median K: {_setting(res, device, dtype, smin)}",
+        f"time per step (ms) to reach eps = {eps:g}, median time / median K: {_setting(res, device, dtype, cond)}",
         ["n"] + [f"D={D}" for D in cfg.degrees],
         rows,
     )
 
 
-def error_table(res: dict[str, object], device: str, dtype: torch.dtype, smin: float, eps: float) -> None:
+def error_table(res: dict[str, object], device: str, dtype: torch.dtype, cond: float, eps: float) -> None:
     """
     res: output of run_time_to_accuracy (or run_cpwl_time_to_accuracy)
-    device, dtype, smin, eps: which setting
+    device, dtype, cond, eps: which setting
     Returns: nothing, prints the relative Frobenius error reached (mean ± std), one row per size, one column per degree
     Note: needs measure_error; for the CPWL operator the reference is the exact operator
     """
@@ -262,11 +264,11 @@ def error_table(res: dict[str, object], device: str, dtype: torch.dtype, smin: f
         raise ValueError("no errors in res: run with measure_error=True")
     fmt = lambda c: f"{c['error']['mean']:.2e} ± {c['error']['std']:.1e}"
     rows = [
-        [str(n)] + [fmt(cells[device, dtype, n, smin, eps][D]) for D in cfg.degrees]
+        [str(n)] + [fmt(cells[device, dtype, n, cond, eps][D]) for D in cfg.degrees]
         for n in sorted(cfg.sizes)
     ]
     _print_table(
-        f"error reached at eps = {eps:g}, mean ± std over {cfg.n_reps} matrices: {_setting(res, device, dtype, smin)}",
+        f"error reached at eps = {eps:g}, mean ± std over {cfg.n_reps} matrices: {_setting(res, device, dtype, cond)}",
         ["n"] + [f"D={D}" for D in cfg.degrees],
         rows,
     )

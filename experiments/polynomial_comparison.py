@@ -19,7 +19,8 @@ class PolynomialComparisonConfig:
     """
     m, n: matrix shape
     rank: see orbit_tools.resolve_rank (None = full)
-    smin: smallest nonzero singular value
+    cond: largest over smallest nonzero singular value
+    sigma_max: largest singular value (the iteration runs on M / sigma_max)
     polynomials: odd polynomial coefficients by name (None = named_polynomials())
     k_max: steps
     k_show: step counts for the spectrum
@@ -32,7 +33,8 @@ class PolynomialComparisonConfig:
     m: int = 128
     n: int = 128
     rank: int | None = None
-    smin: float = 1e-2
+    cond: float = 1e2
+    sigma_max: float = 1.0
     polynomials: dict[str, torch.Tensor] | None = None
     k_max: int = 15
     k_show: list[int] = field(default_factory=lambda: [1, 2, 4, 8])
@@ -60,12 +62,14 @@ def run_polynomial_comparison(cfg: PolynomialComparisonConfig) -> dict[str, obje
     """
     cfg: settings
     Returns: {"error": {name: spectral-norm error at steps 0..k_max}, "sigma": singular
-    values of M, "target": exact sign at sigma, "coords": {name: {k: spectrum after k steps}}}
+    values of M / sigma_max, "target": exact sign at sigma, "coords": {name: {k: spectrum after k steps}}}
     Note: the error is held once it reaches eps, so a polynomial that does not converge
     to the sign never freezes
     """
     polynomials = named_polynomials() if cfg.polynomials is None else cfg.polynomials
-    M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
+    M, N = orbit_tools.make_instance(
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, normalize=True, device=cfg.device
+    )
     U, sigma, V = metrics.reference_svd(M)
     target = (sigma > metrics.numerical_rank_tol(M, sigma)).to(sigma.dtype)
 
@@ -89,7 +93,9 @@ def run_quintic_cpwl(
     """
     if coeffs is None:
         coeffs = named_polynomials()["Max derivative"]
-    M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
+    M, _ = orbit_tools.make_instance(
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+    )
     scalar_fn, sign_form = cpwl_operator.resolve_profile(cfg)
     Y_exact = cpwl_operator.spectral_reference(M, scalar_fn)[4]
     sgn = sign_map.make_sgn_ns(None, n_iters, coeffs=coeffs)
@@ -115,7 +121,9 @@ def run_cpwl_comparison(
     """
     polynomials = named_polynomials() if polynomials is None else polynomials
     k_show = [1, 2, 4, 8] if k_show is None else k_show
-    M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
+    M, _ = orbit_tools.make_instance(
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+    )
     scalar_fn, sign_form = cpwl_operator.resolve_profile(cfg)
     U, sigma, V, target, Y_exact = cpwl_operator.spectral_reference(M, scalar_fn)
     Md = M.to(cfg.dtype)

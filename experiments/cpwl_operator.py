@@ -17,7 +17,8 @@ class CPWLOperatorConfig:
     """
     m, n: matrix shape
     rank: see orbit_tools.resolve_rank (None = full)
-    smin: smallest nonzero singular value
+    cond: largest over smallest nonzero singular value
+    sigma_max: largest singular value
     profile: "clip", "soft", "leaky_relu", "capped_leaky_relu", "leaky_clip" or "spline"
     alpha, beta: clip bounds (also beta = cap for capped_leaky_relu)
     gamma: soft threshold
@@ -32,13 +33,15 @@ class CPWLOperatorConfig:
     dtype: precision
     device: cpu or cuda
     seed: RNG seed
-    Note: parameters the chosen profile does not use are ignored
+    Note: parameters the chosen profile does not use are ignored; the profile parameters
+    (alpha, beta, gamma, mu, knots) are in the units of M, not relative to sigma_max
     """
 
     m: int = 64
     n: int = 48
     rank: int | None = None
-    smin: float = 1e-2
+    cond: float = 1e2
+    sigma_max: float = 1.0
     profile: str = "clip"
     alpha: float | None = -0.5
     beta: float | None = 0.5
@@ -120,7 +123,9 @@ def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, dict[int, torch.T
     Note: every internal sign call uses the same k steps; once the error reaches eps the
     remaining steps are skipped and it is held
     """
-    M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
+    M, _ = orbit_tools.make_instance(
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+    )
     scalar_fn, sign_form = resolve_profile(cfg)
     _, _, _, _, Y_exact = spectral_reference(M, scalar_fn)
     Md = M.to(cfg.dtype)
@@ -146,7 +151,9 @@ def run_cpwl_spectrum(cfg: CPWLOperatorConfig) -> dict[str, object]:
     Returns: {"sigma": singular values of M, "target": exact profile at sigma,
     "coords": {k: output spectrum after k steps}}
     """
-    M, _ = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
+    M, _ = orbit_tools.make_instance(
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+    )
     scalar_fn, sign_form = resolve_profile(cfg)
     U, sigma, V, target, _ = spectral_reference(M, scalar_fn)
     Md = M.to(cfg.dtype)

@@ -15,7 +15,8 @@ class ConvergenceConfig:
     """
     m, n: matrix shape
     rank: see orbit_tools.resolve_rank (None = full)
-    smin: smallest nonzero singular value
+    cond: largest over smallest nonzero singular value
+    sigma_max: largest singular value (the iteration runs on M / sigma_max)
     degrees: degrees to compare
     k_max: steps
     eps: freeze precision (None = orbit_tools.default_eps)
@@ -27,7 +28,8 @@ class ConvergenceConfig:
     m: int = 128
     n: int = 128
     rank: int | None = None
-    smin: float = 1e-2
+    cond: float = 1e2
+    sigma_max: float = 1.0
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     k_max: int = 30
     eps: float | None = None
@@ -42,7 +44,9 @@ def run_convergence(cfg: ConvergenceConfig) -> dict[str, dict[int, torch.Tensor]
     Returns: {"error": {D: spectral-norm error at steps 0..k_max}}
     Note: the error is held once it reaches eps
     """
-    M, N = orbit_tools.make_instance(cfg.m, cfg.n, cfg.rank, cfg.smin, cfg.seed, device=cfg.device)
+    M, N = orbit_tools.make_instance(
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, normalize=True, device=cfg.device
+    )
     error = {}
     for D in cfg.degrees:
         _, error[D] = orbit_tools.run_orbit(M, N, D, cfg.k_max, cfg.dtype, cfg.eps)

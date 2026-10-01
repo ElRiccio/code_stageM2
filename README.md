@@ -27,7 +27,7 @@ that is.
 | Notebook | Module | What it looks at |
 | --- | --- | --- |
 | `exp1_convergence` | `convergence.py` | Error per step, for several degrees |
-| `exp2_conditioning` | `conditioning.py` | Effect of a small smallest singular value, vs the predicted step count |
+| `exp2_conditioning` | `conditioning.py` | Effect of the condition number, vs the predicted step count: error curves for one `cond`, and iterations against `cond` over a whole sweep |
 | `exp3_rank_deficiency` | `rank_deficiency.py` | Rank-deficient matrices: do the zero singular values stay zero? |
 | `exp4_svd_timing` | `svd_timing.py` | Newton-Schulz vs SVD wall-clock time |
 | `exp5_time_to_accuracy` | `time_to_accuracy.py` | Time to reach a target accuracy |
@@ -38,6 +38,18 @@ that is.
 | `exp10_step_cost` | `step_cost.py` | Time of one Newton-Schulz step against the degree (plain and Gram-based step) |
 
 A few things worth knowing:
+
+- **The test spectrum.** Every experiment except exp10 uses singular values
+  log-spaced from `sigma_max` down to `sigma_max / cond`, with random
+  singular vectors. `sigma_max` defaults to 1 and `cond` is the condition
+  number (the timing and conditioning experiments take a list, `conds`).
+  The experiments that run the iteration directly on the matrix (exp1, 2, 3,
+  9's polynomial part) divide by `sigma_max` first, so changing it does not
+  change their results. The timing experiments rescale through the norm
+  estimate (`power_margin`), so they are unaffected too. The CPWL experiments
+  (exp6, 7, 8, 9's CPWL part) are the exception: the profile parameters
+  (`alpha`, `beta`, `gamma`, `mu`, `knots`) are in the units of the matrix,
+  so `sigma_max` changes where the profile cuts the spectrum.
 
 - **Two ways to stop.** The experiments that compare against the exact sign
   (exp1, exp2, exp3, exp6, exp9) know the error at every step, so once it reaches
@@ -72,13 +84,13 @@ A few things worth knowing:
   skipped). `svd_only=True` does the opposite and times only the SVD (needs
   `run_svd`), so tables and plots show just the SVD column/curve.
 - **Progress vs tables.** With `verbose=True` the timing experiments only
-  print one progress line per (n, smin); all results are in tables.
+  print one progress line per (n, cond); all results are in tables.
   - exp4: time, speedup over the SVD, iterations K, error, and time against
-    smin at a chosen size.
+    cond at a chosen size.
   - exp5: time (with an SVD column if `svd_reference_line`), speedup over the
     SVD, iterations, time per step, and the error actually reached against the
     exact sign (mean ± std; `measure_error`, costs one extra SVD per matrix).
-  - exp7: exp4's time, speedup and smin tables, plus a results table per smin
+  - exp7: exp4's time, speedup and cond tables, plus a results table per cond
     with one row per degree and an SVD row (the SVD-based evaluation in the
     same dtype, the yardstick for the error; ~1e-16 in float64). Errors are
     against the exact float64 operator of the unrounded matrix. Columns: the

@@ -29,14 +29,18 @@ and the spectral operators you can build from them.
   basin radius R_D, the step count K_D, and the admissible quintics
   (coefficients, slopes, order and constant of convergence).
 - `orbit_tools.py` supports the convergence experiments: building a test
-  matrix with log-spaced singular values plus its exact sign, running the
+  matrix with log-spaced singular values (from `sigma_max` down to
+  `sigma_max / cond`) plus its exact sign, running the
   iteration, and measuring errors, ranks and the first step below a target.
   `run_orbit` freezes the iterate once its error reaches `eps`, so noise in the
   null space of a rank-deficient matrix is not amplified afterwards. It takes
   either a degree or explicit `coeffs`, so any odd polynomial can be run.
 - `plots.py` has the plotting helpers, all taking an optional axis: error
-  curves, the e_{k+1} vs e_k map, rank curves, spectra, and the timing plots
-  (time vs n, vs smin, vs degree, and `plot_step_cost_vs_degree` for the time of one step). The time-vs-degree plot draws the exact-SVD
+  curves (the predicted K_D lines, first-hit markers and eps line can each be
+  switched off with `show_predicted`, `show_first_hit`, `show_eps_line`, and `k_plot` cuts the x axis), the
+  e_{k+1} vs e_k map, rank curves, spectra, iterations vs the condition number
+  (`plot_iterations_vs_cond`, same toggles minus the eps line), and the timing plots
+  (time vs n, vs cond, vs degree, and `plot_step_cost_vs_degree` for the time of one step). The time-vs-degree plot draws the exact-SVD
   time as a dashed line when it was timed (`show_svd=False` hides it);
   `add_svd_reference_line` does the same on any axis.
 - `timing.py` has `time_call` (one timed call, with warm-up and CUDA sync) and

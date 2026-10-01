@@ -34,47 +34,57 @@ def resolve_rank(m: int, n: int, rank: int | None) -> int:
 
 def log_spectrum(
     r: int,
-    smin: float,
+    cond: float,
+    sigma_max: float = 1.0,
     *,
     dtype: torch.dtype = torch.float64,
     device: torch.device | str = "cpu",
 ) -> torch.Tensor:
     """
     r: how many values
-    smin: smallest value
+    cond: ratio of largest to smallest value
+    sigma_max: largest value
     dtype, device: output type and place
-    Returns: log-spaced values from 1 down to smin
+    Returns: log-spaced values from sigma_max down to sigma_max / cond
     """
-    return torch.logspace(0.0, math.log10(smin), r, dtype=dtype, device=device)
+    return torch.logspace(
+        math.log10(sigma_max), math.log10(sigma_max / cond), r, dtype=dtype, device=device
+    )
 
 
 def make_instance(
     m: int,
     n: int,
     rank: int | None,
-    smin: float,
+    cond: float,
     seed: int,
     *,
+    sigma_max: float = 1.0,
+    normalize: bool = False,
     device: torch.device | str = "cpu",
     with_sign: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     m, n: shape
     rank: see resolve_rank
-    smin: smallest nonzero singular value
+    cond: largest over smallest nonzero singular value
     seed: RNG seed
+    sigma_max: largest singular value
+    normalize: divide M by sigma_max, so the iteration starts at largest singular value 1
     device: where to build it
     with_sign: also compute the exact sign (one SVD)
     Returns: matrix M, its exact sign N (None if with_sign is False)
+    Note: the sign does not depend on sigma_max, so N is the same with or without normalize
     """
     r = resolve_rank(m, n, rank)
     g = torch.Generator(device=device)
     g.manual_seed(seed)
-    sigma = log_spectrum(r, smin, device=device)
+    sigma = log_spectrum(r, cond, sigma_max, device=device)
     M = matrices.rand_prescribed_spectrum(
         m, n, sigma, generator=g, device=device, dtype=torch.float64
     )
-    return M, sign_map.sgn_svd(M) if with_sign else None
+    N = sign_map.sgn_svd(M) if with_sign else None
+    return (M / sigma_max if normalize else M), N
 
 
 def default_eps(dtype: torch.dtype) -> float:
@@ -96,7 +106,7 @@ def run_orbit(
     coeffs: torch.Tensor | None = None,
 ) -> tuple[list[torch.Tensor], torch.Tensor]:
     """
-    M: input matrix (largest singular value 1)
+    M: input matrix (largest singular value at most 1)
     N: exact sign of M
     D: degree (None if coeffs given)
     k_max: steps

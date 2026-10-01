@@ -22,7 +22,8 @@ from ns_core import matrices, metrics, orbit_tools, sign_map, timing
 class CPWLTimeToAccuracyConfig:
     """
     sizes: matrix sizes n (square, full rank)
-    smins: smallest singular values to try
+    conds: condition numbers (largest over smallest singular value) to try
+    sigma_max: largest singular value (profile parameters stay in the units of M)
     degrees: degrees to compare
     devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
     dtypes: precisions to try
@@ -36,7 +37,8 @@ class CPWLTimeToAccuracyConfig:
     """
 
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
-    smins: list[float] = field(default_factory=lambda: [1e-1, 1e-2, 1e-3, 1e-4])
+    conds: list[float] = field(default_factory=lambda: [1e1, 1e2, 1e3, 1e4])
+    sigma_max: float = 1.0
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     devices: list[str] = field(default_factory=lambda: ["cpu", "cuda"])
     dtypes: list[torch.dtype] = field(default_factory=lambda: [torch.float32, torch.float64])
@@ -64,8 +66,8 @@ class CPWLTimeToAccuracyConfig:
 def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object]:
     """
     cfg: settings
-    Returns: {"cfg", "cells": {(device, dtype, n, smin, eps): {D: {"time", "K", "reached", "error"}}},
-    "svd": {(device, dtype, n, smin): time stats}}
+    Returns: {"cfg", "cells": {(device, dtype, n, cond, eps): {D: {"time", "K", "reached", "error"}}},
+    "svd": {(device, dtype, n, cond): time stats}}
     Note: time, K and error are {median, mean, std} over matrices; error is relative Frobenius vs
     the exact operator (absent unless measure_error is on); K = largest step count any
     internal call needed; reached = fraction of matrices where every call hit its target;
@@ -81,14 +83,14 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
         torch.set_num_threads(cfg.cpu_threads)
     cells, svd_cells = {}, {}
     try:
-        blocks = list(itertools.product(cfg.sizes, cfg.smins))
-        for i, (n, smin) in enumerate(blocks, 1):
+        blocks = list(itertools.product(cfg.sizes, cfg.conds))
+        for i, (n, cond) in enumerate(blocks, 1):
             if cfg.verbose:
-                print(f"[{i}/{len(blocks)}] n={n} smin={smin:g} ({cfg.n_reps} matrices)")
+                print(f"[{i}/{len(blocks)}] n={n} cond={cond:g} ({cfg.n_reps} matrices)")
             runs = list(itertools.product(cfg.devices, cfg.dtypes, cfg.eps, cfg.degrees))
             samples = {r: {"time": [], "K": [], "reached": [], "error": []} for r in runs}
             svd_samples = {(device, dtype): [] for device, dtype in itertools.product(cfg.devices, cfg.dtypes)}
-            sigma = orbit_tools.log_spectrum(n, smin)
+            sigma = orbit_tools.log_spectrum(n, cond, cfg.sigma_max)
             for rep in range(cfg.n_reps):
                 g = torch.Generator()
                 g.manual_seed(cfg.seed + rep)
@@ -125,7 +127,7 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
                         if cfg.measure_error:
                             s["error"].append(float(metrics.relative_frobenius_error(Y.double(), Y64.to(device))))
             for device, dtype, eps in itertools.product(cfg.devices, cfg.dtypes, cfg.eps):
-                cells[device, dtype, n, smin, eps] = {
+                cells[device, dtype, n, cond, eps] = {
                     D: {
                         "time": timing.describe(samples[device, dtype, eps, D]["time"]),
                         "K": timing.describe(samples[device, dtype, eps, D]["K"]),
@@ -140,7 +142,7 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
                 }
             if cfg.svd_reference_line:
                 for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
-                    svd_cells[device, dtype, n, smin] = timing.describe(svd_samples[device, dtype])
+                    svd_cells[device, dtype, n, cond] = timing.describe(svd_samples[device, dtype])
     finally:
         if cfg.cpu_threads is not None:
             torch.set_num_threads(threads)

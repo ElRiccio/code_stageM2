@@ -9,6 +9,7 @@ raw sign map.
 
 from __future__ import annotations
 
+import functools
 import itertools
 from dataclasses import dataclass, field
 
@@ -32,7 +33,7 @@ class CPWLTimeToAccuracyConfig:
     k_max: step cap per sign call
     svd_reference_line: also time the SVD-based operator
     measure_error: also record the error reached against the exact operator (one extra SVD per matrix)
-    power_iters, power_margin, n_warmup, n_reps, cpu_threads, seed, verbose: as in TimeToAccuracyConfig
+    power_iters, power_margin, n_warmup, n_reps, cpu_threads, svd_driver, seed, verbose: as in TimeToAccuracyConfig
     Note: a sign call that misses its target is flagged, not fatal
     """
 
@@ -59,6 +60,7 @@ class CPWLTimeToAccuracyConfig:
     n_warmup: int = 3
     n_reps: int = 20
     cpu_threads: int | None = None
+    svd_driver: str | None = None
     seed: int = 0
     verbose: bool = True
 
@@ -101,9 +103,11 @@ def run_cpwl_time_to_accuracy(cfg: CPWLTimeToAccuracyConfig) -> dict[str, object
                     M = M64.to(device=device, dtype=dtype)
 
                     if cfg.svd_reference_line:
+                        driver = cfg.svd_driver if torch.device(device).type == "cuda" else None
+                        sgn_svd = functools.partial(sign_map.sgn_svd, driver=driver)
                         for _ in range(warm):
-                            timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
-                        t, _ = timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
+                            timing.time_call(lambda: sign_form(M, sgn_svd), device, 0)
+                        t, _ = timing.time_call(lambda: sign_form(M, sgn_svd), device, 0)
                         svd_samples[device, dtype].append(t)
 
                     for eps, D in itertools.product(cfg.eps, cfg.degrees):

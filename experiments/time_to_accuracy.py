@@ -34,6 +34,7 @@ class TimeToAccuracyConfig:
     n_warmup: untimed calls, first matrix only
     n_reps: random matrices per (n, cond)
     cpu_threads: torch threads (None = default)
+    svd_driver: CUDA SVD driver (None = torch's choice)
     seed: RNG seed of the first matrix, then +1 each
     verbose: print progress (one line per n, cond)
     Note: a run stops when the residual is below eps (bounds the relative Frobenius
@@ -56,6 +57,7 @@ class TimeToAccuracyConfig:
     n_warmup: int = 3
     n_reps: int = 20
     cpu_threads: int | None = None
+    svd_driver: str | None = None
     seed: int = 0
     verbose: bool = True
 
@@ -92,12 +94,14 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
                 g.manual_seed(cfg.seed + rep)
                 M64 = matrices.rand_prescribed_spectrum(n, n, sigma, generator=g, dtype=torch.float64)
                 warm = cfg.n_warmup if rep == 0 else 0
-                N64 = sign_map.sgn_svd(M64.to(cfg.devices[0])) if cfg.measure_error else None
+                ref_driver = cfg.svd_driver if torch.device(cfg.devices[0]).type == "cuda" else None
+                N64 = sign_map.sgn_svd(M64.to(cfg.devices[0]), driver=ref_driver) if cfg.measure_error else None
                 for device, dtype in itertools.product(cfg.devices, cfg.dtypes):
                     M = M64.to(device=device, dtype=dtype)
+                    driver = cfg.svd_driver if torch.device(device).type == "cuda" else None
 
                     if cfg.svd_reference_line:
-                        t, _ = timing.time_call(lambda: sign_map.sgn_svd(M), device, warm)
+                        t, _ = timing.time_call(lambda: sign_map.sgn_svd(M, driver=driver), device, warm)
                         svd_samples[device, dtype].append(t)
 
                     for eps, D in itertools.product(cfg.eps, cfg.degrees):

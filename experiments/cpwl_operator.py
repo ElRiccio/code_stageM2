@@ -25,11 +25,9 @@ class CPWLOperatorConfig:
     a: leaky slope
     mu: leaky clip half-width
     knots, vals: spline points (profile "spline")
-    degrees: degrees for the error run
-    k_max: steps for the error run
-    D_show: degree for the spectrum run
-    k_show: step counts for the spectrum run
-    eps: relative error at which the error run stops (None = orbit_tools.default_eps)
+    degrees: degrees to compare
+    k_max: steps
+    eps: relative error at which a run stops (None = orbit_tools.default_eps)
     dtype: precision
     device: cpu or cuda
     seed: RNG seed
@@ -52,8 +50,6 @@ class CPWLOperatorConfig:
     vals: list[float] | None = None
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     k_max: int = 20
-    D_show: int = 3
-    k_show: list[int] = field(default_factory=lambda: [1, 2, 4, 8])
     eps: float | None = None
     dtype: torch.dtype = torch.float64
     device: str = "cpu"
@@ -116,51 +112,35 @@ def spectral_reference(
     return U, sigma, V, target, Y
 
 
-def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, dict[int, torch.Tensor]]:
+def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, object]:
     """
     cfg: settings
-    Returns: {"error": {D: relative Frobenius error at k = 0..k_max}}
+    Returns: {"error": {D: relative Frobenius error at k = 0..k_max}, "sigma": singular
+    values of M, "target": exact profile at sigma, "coords": {D: {k: output spectrum}}}
     Note: every internal sign call uses the same k steps; once the error reaches eps the
-    remaining steps are skipped and it is held
+    remaining steps are skipped and the error and spectrum are held
     """
     M, _ = orbit_tools.make_instance(
         cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
     )
     scalar_fn, sign_form = resolve_profile(cfg)
-    _, _, _, _, Y_exact = spectral_reference(M, scalar_fn)
+    U, sigma, V, target, Y_exact = spectral_reference(M, scalar_fn)
     Md = M.to(cfg.dtype)
     eps = orbit_tools.default_eps(cfg.dtype) if cfg.eps is None else cfg.eps
 
-    error = {}
+    error, coords = {}, {}
     for D in cfg.degrees:
         e = torch.empty(cfg.k_max + 1, dtype=torch.float64)
+        coords[D] = {}
         for k in range(cfg.k_max + 1):
             sgn = sign_map.make_sgn_ns(D, k)
             Y = sign_form(Md, sgn).to(torch.float64)
             e[k] = metrics.relative_frobenius_error(Y, Y_exact)
+            coords[D][k] = metrics.spectral_coordinates(Y, U, V)
             if e[k] <= eps:
                 e[k + 1 :] = e[k]
+                for j in range(k + 1, cfg.k_max + 1):
+                    coords[D][j] = coords[D][k]
                 break
         error[D] = e
-    return {"error": error}
-
-
-def run_cpwl_spectrum(cfg: CPWLOperatorConfig) -> dict[str, object]:
-    """
-    cfg: settings
-    Returns: {"sigma": singular values of M, "target": exact profile at sigma,
-    "coords": {k: output spectrum after k steps}}
-    """
-    M, _ = orbit_tools.make_instance(
-        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
-    )
-    scalar_fn, sign_form = resolve_profile(cfg)
-    U, sigma, V, target, _ = spectral_reference(M, scalar_fn)
-    Md = M.to(cfg.dtype)
-
-    coords = {}
-    for k in cfg.k_show:
-        sgn = sign_map.make_sgn_ns(cfg.D_show, k)
-        Y = sign_form(Md, sgn).to(torch.float64)
-        coords[k] = metrics.spectral_coordinates(Y, U, V)
-    return {"sigma": sigma, "target": target, "coords": coords}
+    return {"error": error, "sigma": sigma, "target": target, "coords": coords}

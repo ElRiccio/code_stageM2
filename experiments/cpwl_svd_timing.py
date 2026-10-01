@@ -7,6 +7,7 @@ Same random matrices as `experiments.svd_timing`.
 
 from __future__ import annotations
 
+import functools
 import itertools
 from dataclasses import dataclass, field
 
@@ -38,6 +39,7 @@ class CPWLSvdTimingConfig:
     n_warmup: untimed calls, first matrix only
     n_reps: random matrices per (n, cond)
     cpu_threads: torch threads (None = default)
+    svd_driver: CUDA SVD driver (None = torch's choice)
     seed: RNG seed of the first matrix, then +1 each
     verbose: print progress (one line per n, cond)
     Note: a sign call that misses eps is flagged, not fatal
@@ -68,6 +70,7 @@ class CPWLSvdTimingConfig:
     cpu_threads: int | None = None
     run_svd: bool = True
     svd_only: bool = False
+    svd_driver: str | None = None
     seed: int = 0
     verbose: bool = True
 
@@ -113,9 +116,11 @@ def run_cpwl_svd_timing(cfg: CPWLSvdTimingConfig) -> dict[str, object]:
                     M = M64.to(device=device, dtype=cfg.dtype)
                     if cfg.run_svd:
                         Y_exact = spectral_reference(M64.to(device), scalar_fn)[-1]
+                        driver = cfg.svd_driver if torch.device(device).type == "cuda" else None
+                        sgn_svd = functools.partial(sign_map.sgn_svd, driver=driver)
                         for _ in range(warm):
-                            timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
-                        t, Y = timing.time_call(lambda: sign_form(M, sign_map.sgn_svd), device, 0)
+                            timing.time_call(lambda: sign_form(M, sgn_svd), device, 0)
+                        t, Y = timing.time_call(lambda: sign_form(M, sgn_svd), device, 0)
                         samples[device]["svd"]["time"].append(t)
                         samples[device]["svd"]["error"].append(
                             float(metrics.relative_frobenius_error(Y.double(), Y_exact))

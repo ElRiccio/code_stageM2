@@ -1,12 +1,12 @@
 """Polynomial comparison experiment: run the Muon quintic, the Björck quintic and
 the max-derivative quintic on one matrix, and record the error against the exact
-sign and the singular values after a few step counts. It also measures a CPWL
+sign and the singular values after every step. It also measures a CPWL
 operator built on a fixed number of steps of one of them.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import torch
 
@@ -23,7 +23,6 @@ class PolynomialComparisonConfig:
     sigma_max: largest singular value (the iteration runs on M / sigma_max)
     polynomials: odd polynomial coefficients by name (None = named_polynomials())
     k_max: steps
-    k_show: step counts for the spectrum
     eps: freeze precision (None = orbit_tools.default_eps)
     dtype: precision
     device: cpu or cuda
@@ -37,7 +36,6 @@ class PolynomialComparisonConfig:
     sigma_max: float = 1.0
     polynomials: dict[str, torch.Tensor] | None = None
     k_max: int = 15
-    k_show: list[int] = field(default_factory=lambda: [1, 2, 4, 8])
     eps: float | None = None
     dtype: torch.dtype = torch.float64
     device: str = "cpu"
@@ -62,7 +60,7 @@ def run_polynomial_comparison(cfg: PolynomialComparisonConfig) -> dict[str, obje
     """
     cfg: settings
     Returns: {"error": {name: spectral-norm error at steps 0..k_max}, "sigma": singular
-    values of M / sigma_max, "target": exact sign at sigma, "coords": {name: {k: spectrum after k steps}}}
+    values of M / sigma_max, "target": exact sign at sigma, "coords": {name: {k: spectrum after k steps, k = 0..k_max}}}
     Note: the error is held once it reaches eps, so a polynomial that does not converge
     to the sign never freezes
     """
@@ -78,7 +76,7 @@ def run_polynomial_comparison(cfg: PolynomialComparisonConfig) -> dict[str, obje
         orbit, error[name] = orbit_tools.run_orbit(
             M, N, None, cfg.k_max, cfg.dtype, cfg.eps, coeffs=coeffs
         )
-        coords[name] = {k: metrics.spectral_coordinates(orbit[k], U, V) for k in cfg.k_show}
+        coords[name] = {k: metrics.spectral_coordinates(orbit[k], U, V) for k in range(cfg.k_max + 1)}
     return {"error": error, "sigma": sigma, "target": target, "coords": coords}
 
 
@@ -107,20 +105,17 @@ def run_cpwl_comparison(
     cfg: cpwl_operator.CPWLOperatorConfig,
     polynomials: dict[str, torch.Tensor] | None = None,
     k_max: int = 15,
-    k_show: list[int] | None = None,
 ) -> dict[str, object]:
     """
     cfg: CPWL settings (profile, parameters, matrix, dtype, device, seed, eps)
     polynomials: odd polynomial coefficients by name (None = named_polynomials())
-    k_max: steps for the error curves
-    k_show: step counts for the spectrum (None = [1, 2, 4, 8])
+    k_max: steps
     Returns: {"error": {name: relative Frobenius error at k = 0..k_max}, "sigma": singular
     values of M, "target": exact profile at sigma, "coords": {name: {k: output spectrum}}}
     Note: every internal sign call uses the same k steps; once the error reaches cfg.eps the
-    remaining steps are skipped and it is held
+    remaining steps are skipped and the error and spectrum are held
     """
     polynomials = named_polynomials() if polynomials is None else polynomials
-    k_show = [1, 2, 4, 8] if k_show is None else k_show
     M, _ = orbit_tools.make_instance(
         cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
     )
@@ -132,15 +127,15 @@ def run_cpwl_comparison(
     error, coords = {}, {}
     for name, coeffs in polynomials.items():
         e = torch.empty(k_max + 1, dtype=torch.float64)
+        coords[name] = {}
         for k in range(k_max + 1):
             Y = sign_form(Md, sign_map.make_sgn_ns(None, k, coeffs=coeffs)).to(torch.float64)
             e[k] = metrics.relative_frobenius_error(Y, Y_exact)
+            coords[name][k] = metrics.spectral_coordinates(Y, U, V)
             if e[k] <= eps:
                 e[k + 1 :] = e[k]
+                for j in range(k + 1, k_max + 1):
+                    coords[name][j] = coords[name][k]
                 break
         error[name] = e
-        coords[name] = {}
-        for k in k_show:
-            Y = sign_form(Md, sign_map.make_sgn_ns(None, k, coeffs=coeffs)).to(torch.float64)
-            coords[name][k] = metrics.spectral_coordinates(Y, U, V)
     return {"error": error, "sigma": sigma, "target": target, "coords": coords}

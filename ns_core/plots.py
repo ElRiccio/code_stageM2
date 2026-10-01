@@ -340,6 +340,7 @@ def plot_spectrum(
     ax=None,
     xaxis: str = "sigma",
     labels: dict | None = None,
+    ks: list[int] | None = None,
 ):
     """
     sigma: input singular values
@@ -348,8 +349,11 @@ def plot_spectrum(
     ax: axis to draw on
     xaxis: "sigma" (values) or "index" (rank order)
     labels: legend text per key (default "k=key")
+    ks: iteration counts to draw (None = all in coords)
     Returns: the axis
     """
+    if ks is not None:
+        coords = {k: coords[k] for k in ks}
     ax = _axis(ax)
     order = torch.argsort(sigma)
     s = sigma[order]

@@ -19,6 +19,7 @@ class CPWLOperatorConfig:
     rank: see orbit_tools.resolve_rank (None = full)
     cond: largest over smallest nonzero singular value
     sigma_max: largest singular value
+    spectrum: "log" or "linear" spacing of the singular values
     profile: "clip", "soft", "leaky_relu", "capped_leaky_relu", "leaky_clip" or "spline"
     alpha, beta: clip bounds (also beta = cap for capped_leaky_relu)
     gamma: soft threshold
@@ -40,6 +41,7 @@ class CPWLOperatorConfig:
     rank: int | None = None
     cond: float = 1e2
     sigma_max: float = 1.0
+    spectrum: str = "log"
     profile: str = "clip"
     alpha: float | None = -0.5
     beta: float | None = 0.5
@@ -121,7 +123,7 @@ def run_cpwl_convergence(cfg: CPWLOperatorConfig) -> dict[str, object]:
     remaining steps are skipped and the error and spectrum are held
     """
     M, _ = orbit_tools.make_instance(
-        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, device=cfg.device
     )
     scalar_fn, sign_form = resolve_profile(cfg)
     U, sigma, V, target, Y_exact = spectral_reference(M, scalar_fn)

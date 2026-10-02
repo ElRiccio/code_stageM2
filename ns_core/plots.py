@@ -80,7 +80,7 @@ def plot_error_curves(
     if k_plot is not None:
         ax.set_xlim(0, k_plot)
     ax.set_xlabel("iteration $k$")
-    ax.set_ylabel(ylabel if ylabel is not None else "$\\|X_k - \\mathrm{Sgn}(M)\\|_2$")
+    ax.set_ylabel(ylabel if ylabel is not None else "$\\|X_k - \\mathrm{msgn}(M)\\|_2$")
     ax.legend(handles=handles, fontsize=8)
     return ax
 
@@ -341,6 +341,7 @@ def plot_spectrum(
     xaxis: str = "sigma",
     labels: dict | None = None,
     ks: list[int] | None = None,
+    color: str | None = None,
 ):
     """
     sigma: input singular values
@@ -350,6 +351,7 @@ def plot_spectrum(
     xaxis: "sigma" (values) or "index" (rank order)
     labels: legend text per key (default "k=key")
     ks: iteration counts to draw (None = all in coords)
+    color: curve color (None = one per k)
     Returns: the axis
     """
     if ks is not None:
@@ -366,7 +368,7 @@ def plot_spectrum(
     ax.plot(x, _np(s), ":", color="0.35", lw=1.2, label="$\\sigma_i(M)$")
     colors = _colors(coords)
     for k in sorted(coords):
-        ax.plot(x, _np(coords[k][order]), lw=1.0, color=colors[k], label=_label(labels, k, f"k={k}"))
+        ax.plot(x, _np(coords[k][order]), lw=1.0, color=colors[k] if color is None else color, label=_label(labels, k, f"k={k}"))
     ax.plot(x, _np(target[order]), "k--", lw=1.3, label="exact (SVD)")
     ax.set_xlabel(xlabel)
     ax.set_ylabel("spectral coordinate")

@@ -22,6 +22,7 @@ class TimeToAccuracyConfig:
     sizes: matrix sizes n (square, full rank)
     conds: condition numbers (largest over smallest singular value) to try
     sigma_max: largest singular value
+    spectrum: "log" or "linear" spacing of the singular values
     degrees: degrees to compare
     devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
     dtypes: precisions to try
@@ -45,6 +46,7 @@ class TimeToAccuracyConfig:
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
     conds: list[float] = field(default_factory=lambda: [1e1, 1e2, 1e3, 1e4])
     sigma_max: float = 1.0
+    spectrum: str = "log"
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     devices: list[str] = field(default_factory=lambda: ["cpu", "cuda"])
     dtypes: list[torch.dtype] = field(default_factory=lambda: [torch.float32, torch.float64])
@@ -88,7 +90,7 @@ def run_time_to_accuracy(cfg: TimeToAccuracyConfig) -> dict[str, object]:
             runs = list(itertools.product(cfg.devices, cfg.dtypes, cfg.eps, cfg.degrees))
             samples = {r: {"time": [], "K": [], "reached": [], "error": []} for r in runs}
             svd_samples = {(device, dtype): [] for device, dtype in itertools.product(cfg.devices, cfg.dtypes)}
-            sigma = orbit_tools.log_spectrum(n, cond, cfg.sigma_max)
+            sigma = orbit_tools.make_spectrum(n, cond, cfg.sigma_max, cfg.spectrum)
             for rep in range(cfg.n_reps):
                 g = torch.Generator()
                 g.manual_seed(cfg.seed + rep)

@@ -29,8 +29,9 @@ and the spectral operators you can build from them.
   basin radius R_D, the step count K_D, and the admissible quintics
   (coefficients, slopes, order and constant of convergence).
 - `orbit_tools.py` supports the convergence experiments: building a test
-  matrix with log-spaced singular values (from `sigma_max` down to
-  `sigma_max / cond`) plus its exact sign, running the
+  matrix with log-spaced (default) or linearly spaced singular values (from
+  `sigma_max` down to `sigma_max / cond`, picked by `make_spectrum`) plus its
+  exact sign, running the
   iteration, and measuring errors, ranks and the first step below a target.
   `run_orbit` freezes the iterate once its error reaches `eps`, so noise in the
   null space of a rank-deficient matrix is not amplified afterwards. It takes

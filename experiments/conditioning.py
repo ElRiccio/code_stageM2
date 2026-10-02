@@ -18,6 +18,7 @@ class ConditioningConfig:
     rank: see orbit_tools.resolve_rank (None = full)
     conds: condition numbers (largest over smallest nonzero singular value) to try
     sigma_max: largest singular value (the iteration runs on M / sigma_max)
+    spectrum: "log" or "linear" spacing of the singular values
     degrees: degrees to compare
     eps: accuracy at which step counts are read and the iterate is frozen (None = 10 machine epsilons)
     k_max: steps
@@ -31,6 +32,7 @@ class ConditioningConfig:
     rank: int | None = None
     conds: list[float] = field(default_factory=lambda: [1e1, 1e2, 1e3, 1e4, 1e5])
     sigma_max: float = 1.0
+    spectrum: str = "log"
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     eps: float | None = None
     k_max: int = 200
@@ -50,7 +52,7 @@ def run_conditioning(cfg: ConditioningConfig) -> dict[str, object]:
     error, predicted, iterations = {}, {}, {}
     for cond in cfg.conds:
         M, N = orbit_tools.make_instance(
-            cfg.m, cfg.n, cfg.rank, cond, cfg.seed, sigma_max=cfg.sigma_max, normalize=True, device=cfg.device
+            cfg.m, cfg.n, cfg.rank, cond, cfg.seed, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, normalize=True, device=cfg.device
         )
         error[cond], predicted[cond], iterations[cond] = {}, {}, {}
         for D in cfg.degrees:

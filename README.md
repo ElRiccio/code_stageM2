@@ -40,8 +40,9 @@ that is.
 A few things worth knowing:
 
 - **The test spectrum.** Every experiment except exp10 uses singular values
-  log-spaced from `sigma_max` down to `sigma_max / cond`, with random
-  singular vectors. `sigma_max` defaults to 1 and `cond` is the condition
+  spaced from `sigma_max` down to `sigma_max / cond`, with random
+  singular vectors. The spacing is the `spectrum` field of each Config:
+  `"log"` (default) or `"linear"`. `sigma_max` defaults to 1 and `cond` is the condition
   number (the timing and conditioning experiments take a list, `conds`).
   The experiments that run the iteration directly on the matrix (exp1, 2, 3,
   9's polynomial part) divide by `sigma_max` first, so changing it does not

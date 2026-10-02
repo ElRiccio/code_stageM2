@@ -17,6 +17,7 @@ class RankDeficiencyConfig:
     rank: see orbit_tools.resolve_rank; must be below full (e.g. -1)
     cond: largest over smallest nonzero singular value
     sigma_max: largest singular value (the iteration runs on M / sigma_max)
+    spectrum: "log" or "linear" spacing of the singular values
     degrees: degrees to compare
     eps: accuracy for the first-hit step and the freeze
     k_max: steps
@@ -32,6 +33,7 @@ class RankDeficiencyConfig:
     rank: int = 32
     cond: float = 1e2
     sigma_max: float = 1.0
+    spectrum: str = "log"
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     eps: float = 1e-8
     k_max: int = 40
@@ -52,7 +54,7 @@ def run_rank_deficiency(cfg: RankDeficiencyConfig) -> dict[str, dict[int, torch.
         raise ValueError("rank must resolve to less than min(m, n)")
     rank_tol = cfg.eps if cfg.rank_tol is None else cfg.rank_tol
     M, N = orbit_tools.make_instance(
-        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, normalize=True, device=cfg.device
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, normalize=True, device=cfg.device
     )
     error, rank, iterations = {}, {}, {}
     for D in cfg.degrees:

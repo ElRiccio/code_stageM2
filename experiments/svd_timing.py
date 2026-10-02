@@ -21,6 +21,7 @@ class SvdTimingConfig:
     sizes: matrix sizes n (square n x n)
     conds: condition numbers (largest over smallest singular value) to try
     sigma_max: largest singular value
+    spectrum: "log" or "linear" spacing of the singular values
     degrees: degrees to compare
     devices: devices to time (must exist, e.g. ["cpu"] without a GPU)
     dtype: precision
@@ -43,6 +44,7 @@ class SvdTimingConfig:
     sizes: list[int] = field(default_factory=lambda: [128, 256, 512, 1024, 2048, 4096])
     conds: list[float] = field(default_factory=lambda: [1e1, 1e2, 1e3, 1e4])
     sigma_max: float = 1.0
+    spectrum: str = "log"
     degrees: list[int] = field(default_factory=lambda: [1, 2, 3, 4])
     devices: list[str] = field(default_factory=lambda: ["cpu", "cuda"])
     dtype: torch.dtype = torch.float32
@@ -102,7 +104,7 @@ def run_svd_timing(cfg: SvdTimingConfig) -> dict[str, object]:
             }
             for rep in range(cfg.n_reps):
                 M64, N64 = orbit_tools.make_instance(
-                    n, n, None, cond, cfg.seed + rep, sigma_max=cfg.sigma_max, with_sign=cfg.run_svd
+                    n, n, None, cond, cfg.seed + rep, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, with_sign=cfg.run_svd
                 )
                 warm = cfg.n_warmup if rep == 0 else 0
                 for device in cfg.devices:

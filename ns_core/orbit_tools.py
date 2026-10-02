@@ -52,6 +52,48 @@ def log_spectrum(
     )
 
 
+def linear_spectrum(
+    r: int,
+    cond: float,
+    sigma_max: float = 1.0,
+    *,
+    dtype: torch.dtype = torch.float64,
+    device: torch.device | str = "cpu",
+) -> torch.Tensor:
+    """
+    r: how many values
+    cond: ratio of largest to smallest value
+    sigma_max: largest value
+    dtype, device: output type and place
+    Returns: evenly spaced values from sigma_max down to sigma_max / cond
+    """
+    return torch.linspace(sigma_max, sigma_max / cond, r, dtype=dtype, device=device)
+
+
+def make_spectrum(
+    r: int,
+    cond: float,
+    sigma_max: float = 1.0,
+    kind: str = "log",
+    *,
+    dtype: torch.dtype = torch.float64,
+    device: torch.device | str = "cpu",
+) -> torch.Tensor:
+    """
+    r: how many values
+    cond: ratio of largest to smallest value
+    sigma_max: largest value
+    kind: "log" or "linear" spacing
+    dtype, device: output type and place
+    Returns: r values from sigma_max down to sigma_max / cond
+    """
+    if kind == "log":
+        return log_spectrum(r, cond, sigma_max, dtype=dtype, device=device)
+    if kind == "linear":
+        return linear_spectrum(r, cond, sigma_max, dtype=dtype, device=device)
+    raise ValueError(f"unknown spectrum kind {kind!r}, expected 'log' or 'linear'")
+
+
 def make_instance(
     m: int,
     n: int,
@@ -60,6 +102,7 @@ def make_instance(
     seed: int,
     *,
     sigma_max: float = 1.0,
+    spectrum: str = "log",
     normalize: bool = False,
     device: torch.device | str = "cpu",
     with_sign: bool = True,
@@ -70,6 +113,7 @@ def make_instance(
     cond: largest over smallest nonzero singular value
     seed: RNG seed
     sigma_max: largest singular value
+    spectrum: "log" or "linear" spacing of the singular values
     normalize: divide M by sigma_max, so the iteration starts at largest singular value 1
     device: where to build it
     with_sign: also compute the exact sign (one SVD)
@@ -79,7 +123,7 @@ def make_instance(
     r = resolve_rank(m, n, rank)
     g = torch.Generator(device=device)
     g.manual_seed(seed)
-    sigma = log_spectrum(r, cond, sigma_max, device=device)
+    sigma = make_spectrum(r, cond, sigma_max, spectrum, device=device)
     M = matrices.rand_prescribed_spectrum(
         m, n, sigma, generator=g, device=device, dtype=torch.float64
     )

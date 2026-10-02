@@ -21,6 +21,7 @@ class PolynomialComparisonConfig:
     rank: see orbit_tools.resolve_rank (None = full)
     cond: largest over smallest nonzero singular value
     sigma_max: largest singular value (the iteration runs on M / sigma_max)
+    spectrum: "log" or "linear" spacing of the singular values
     polynomials: odd polynomial coefficients by name (None = named_polynomials())
     k_max: steps
     eps: freeze precision (None = orbit_tools.default_eps)
@@ -34,6 +35,7 @@ class PolynomialComparisonConfig:
     rank: int | None = None
     cond: float = 1e2
     sigma_max: float = 1.0
+    spectrum: str = "log"
     polynomials: dict[str, torch.Tensor] | None = None
     k_max: int = 15
     eps: float | None = None
@@ -66,7 +68,7 @@ def run_polynomial_comparison(cfg: PolynomialComparisonConfig) -> dict[str, obje
     """
     polynomials = named_polynomials() if cfg.polynomials is None else cfg.polynomials
     M, N = orbit_tools.make_instance(
-        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, normalize=True, device=cfg.device
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, normalize=True, device=cfg.device
     )
     U, sigma, V = metrics.reference_svd(M)
     target = (sigma > metrics.numerical_rank_tol(M, sigma)).to(sigma.dtype)
@@ -92,7 +94,7 @@ def run_quintic_cpwl(
     if coeffs is None:
         coeffs = named_polynomials()["Max derivative"]
     M, _ = orbit_tools.make_instance(
-        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, device=cfg.device
     )
     scalar_fn, sign_form = cpwl_operator.resolve_profile(cfg)
     Y_exact = cpwl_operator.spectral_reference(M, scalar_fn)[4]
@@ -117,7 +119,7 @@ def run_cpwl_comparison(
     """
     polynomials = named_polynomials() if polynomials is None else polynomials
     M, _ = orbit_tools.make_instance(
-        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, device=cfg.device
+        cfg.m, cfg.n, cfg.rank, cfg.cond, cfg.seed, sigma_max=cfg.sigma_max, spectrum=cfg.spectrum, device=cfg.device
     )
     scalar_fn, sign_form = cpwl_operator.resolve_profile(cfg)
     U, sigma, V, target, Y_exact = cpwl_operator.spectral_reference(M, scalar_fn)
